@@ -1,0 +1,535 @@
+// Canonical schema. See docs/database.md section 3.
+// Every timestamp carries `@db.Timestamptz(3)`: Prisma's bare `DateTime` maps to
+// a naive TIMESTAMP(3) with no zone, which cannot carry the Asia/Manila rule.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Enums
+
+enum UserRole {
+  DONOR
+  STAFF
+  ADMIN
+}
+
+enum AuthTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum CalamityType {
+  TYPHOON
+  FLOOD
+  EARTHQUAKE
+  FIRE
+  VOLCANIC_ERUPTION
+  LANDSLIDE
+  OTHER
+}
+
+enum ItemCategory {
+  FOOD
+  WATER
+  CLOTHING
+  HYGIENE
+  BEDDING
+  SCHOOL
+  OTHER
+}
+
+enum DonationStatus {
+  PENDING
+  REJECTED
+  VERIFIED
+  SCHEDULED
+  COLLECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum RequestStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SCHEDULED
+  DISTRIBUTED
+  CANCELLED
+}
+
+enum DistributionStatus {
+  SCHEDULED
+  DISTRIBUTED
+  NO_SHOW
+  CANCELLED
+}
+
+enum CalendarEventType {
+  DONATION_DRIVE
+  COLLECTION
+  DISTRIBUTION
+}
+
+enum CalendarEventStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum SyncStatus {
+  NOT_SYNCED
+  SYNCED
+  FAILED
+}
+
+enum MovementType {
+  DONATION_IN
+  RESERVE
+  RELEASE
+  DISTRIBUTE
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+}
+
+enum EmailStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+  SUPPRESSED
+}
+
+enum NotificationType {
+  DONOR_VERIFY_EMAIL
+  DONOR_PASSWORD_RESET
+  DONATION_SUBMITTED
+  DONATION_VERIFIED
+  DONATION_REJECTED
+  COLLECTION_SCHEDULED
+  COLLECTION_REMINDER
+  REQUEST_RECEIVED
+  REQUEST_VERIFY_EMAIL
+  REQUEST_APPROVED
+  REQUEST_REJECTED
+  REQUEST_STATUS_UPDATED
+  DISTRIBUTION_SCHEDULED
+  DISTRIBUTION_REMINDER
+  DISTRIBUTION_COMPLETED
+  DISTRIBUTION_CANCELLED
+}
+
+// Auth and users
+
+model User {
+  id              String    @id @default(uuid())
+  name            String
+  email           String    @unique // stored lowercase
+  passwordHash    String
+  role            UserRole  @default(DONOR)
+  phone           String?
+  emailVerifiedAt DateTime? @db.Timestamptz(3)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  refreshTokens RefreshToken[]
+  authTokens    AuthToken[]
+  donations     Donation[]
+  auditLogs     AuditLog[]
+
+  @@index([role, isActive])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  familyId  String // all rotations of one login share a family
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  userAgent String?
+  ipHash    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model AuthToken {
+  id        String        @id @default(uuid())
+  userId    String
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime      @db.Timestamptz(3)
+  usedAt    DateTime?     @db.Timestamptz(3)
+  createdAt DateTime      @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+// Catalog and campaigns
+
+model ItemType {
+  id                 String       @id @default(uuid())
+  name               String       @unique // "Food Pack"
+  category           ItemCategory
+  unit               String // "pack", "liter", "piece"
+  lowStockThreshold  Int          @default(20)
+  maxPerRequest      Int? // D-06, null = no cap
+  perHouseholdMember Int? // e.g. 1 pack per member
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+
+  donationItems    DonationItem[]
+  requestedItems   RequestedItem[]
+  inventoryItems   InventoryItem[]
+  priorityForCamps CampaignPriorityItem[]
+}
+
+model Campaign {
+  id            String         @id @default(uuid())
+  name          String
+  slug          String         @unique
+  description   String
+  calamityType CalamityType
+  status        CampaignStatus @default(DRAFT)
+  isSystem      Boolean        @default(false) // the "General Pool" campaign
+  startDate     DateTime       @db.Timestamptz(3)
+  endDate       DateTime?      @db.Timestamptz(3)
+  coverImageUrl String?
+  createdById   String?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+
+  areas          CampaignArea[]
+  priorityItems  CampaignPriorityItem[]
+  donations      Donation[]
+  requests       AssistanceRequest[]
+  inventoryItems InventoryItem[]
+  events         CalendarEvent[]
+
+  @@index([status, startDate])
+}
+
+model CampaignArea {
+  id         String @id @default(uuid())
+  campaignId String
+  barangay   String
+  city       String
+  province   String
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, barangay, city, province])
+}
+
+model CampaignPriorityItem {
+  campaignId     String
+  itemTypeId     String
+  targetQuantity Int?
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  itemType ItemType @relation(fields: [itemTypeId], references: [id])
+
+  @@id([campaignId, itemTypeId])
+}
+
+// Donations
+
+model Donation {
+  id                String         @id @default(uuid())
+  referenceNumber   String         @unique // DON-2026-000123
+  donorId           String
+  campaignId        String // General Pool campaign when donor picks none
+  status            DonationStatus @default(PENDING)
+  preferredDate     DateTime?      @db.Timestamptz(3)
+  preferredNote     String?
+  collectionEventId String?
+  notes             String?
+  rejectionReason   String?
+  submittedAt       DateTime       @default(now()) @db.Timestamptz(3)
+  verifiedById      String?
+  verifiedAt        DateTime?      @db.Timestamptz(3)
+  collectedById     String?
+  collectedAt       DateTime?      @db.Timestamptz(3)
+  completedAt       DateTime?      @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+
+  donor           User            @relation(fields: [donorId], references: [id])
+  campaign        Campaign        @relation(fields: [campaignId], references: [id])
+  collectionEvent CalendarEvent?  @relation(fields: [collectionEventId], references: [id])
+  items           DonationItem[]
+  emails          EmailNotification[]
+
+  @@index([donorId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([campaignId, status])
+}
+
+model DonationItem {
+  id               String    @id @default(uuid())
+  donationId       String
+  itemTypeId       String
+  customName       String? // when itemType is "Other"
+  description      String?
+  quantityDeclared Int
+  quantityReceived Int? // set at collection
+  expiryDate       DateTime? @db.Timestamptz(3)
+
+  donation  Donation            @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  itemType  ItemType            @relation(fields: [itemTypeId], references: [id])
+  movements InventoryMovement[]
+
+  @@index([donationId])
+}
+
+// Inventory
+
+model InventoryItem {
+  id          String   @id @default(uuid())
+  itemTypeId  String
+  campaignId  String
+  available   Int      @default(0)
+  reserved    Int      @default(0)
+  distributed Int      @default(0)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  itemType ItemType @relation(fields: [itemTypeId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+
+  movements        InventoryMovement[]
+  distributionItems DistributionItem[]
+
+  @@unique([itemTypeId, campaignId])
+  @@index([campaignId])
+}
+
+model InventoryMovement {
+  id                 String       @id @default(uuid())
+  inventoryItemId    String
+  type               MovementType
+  quantity           Int // always positive; direction comes from type
+  availableAfter     Int
+  reservedAfter      Int
+  distributedAfter   Int
+  reason             String? // required for ADJUSTMENT_*
+  donationItemId     String?
+  distributionItemId String?
+  createdById        String?
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+
+  inventoryItem    InventoryItem     @relation(fields: [inventoryItemId], references: [id])
+  donationItem     DonationItem?     @relation(fields: [donationItemId], references: [id])
+  distributionItem DistributionItem? @relation(fields: [distributionItemId], references: [id])
+
+  @@index([inventoryItemId, createdAt])
+}
+
+// Assistance requests (no beneficiary account)
+
+model AssistanceRequest {
+  id                  String        @id @default(uuid())
+  referenceNumber     String        @unique // REQ-2026-004281
+  trackingNumber      String?       @unique // TRK-82K4-19Q7, set on approval
+  fullName            String
+  email               String // stored lowercase
+  contactNumber       String
+  barangay            String
+  city                String
+  province            String
+  householdSize       Int?
+  campaignId          String
+  status              RequestStatus @default(PENDING)
+  notes               String?
+  rejectionReason     String? // written for the beneficiary
+  outsideCampaignArea Boolean       @default(false) // D-07 flag
+  possibleDuplicate   Boolean       @default(false) // D-15 flag
+  emailVerifiedAt     DateTime?     @db.Timestamptz(3)
+  consentAt           DateTime      @db.Timestamptz(3)
+  submitIpHash        String?
+  submittedAt         DateTime      @default(now()) @db.Timestamptz(3)
+  reviewedById        String?
+  reviewedAt          DateTime?     @db.Timestamptz(3)
+  approvedAt          DateTime?     @db.Timestamptz(3)
+  anonymizedAt        DateTime?     @db.Timestamptz(3) // D-13
+  updatedAt           DateTime      @updatedAt @db.Timestamptz(3)
+
+  campaign      Campaign             @relation(fields: [campaignId], references: [id])
+  items         RequestedItem[]
+  statusEvents  RequestStatusEvent[]
+  distributions Distribution[]
+  emails        EmailNotification[]
+
+  @@index([status, submittedAt])
+  @@index([campaignId, status])
+  @@index([email, campaignId])
+  @@index([contactNumber, campaignId])
+}
+
+model RequestedItem {
+  id         String  @id @default(uuid())
+  requestId  String
+  itemTypeId String
+  customName String?
+  quantity   Int     @default(1)
+
+  request  AssistanceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  itemType ItemType          @relation(fields: [itemTypeId], references: [id])
+
+  @@index([requestId])
+}
+
+model RequestStatusEvent {
+  id         String         @id @default(uuid())
+  requestId  String
+  fromStatus RequestStatus?
+  toStatus   RequestStatus
+  actorId    String? // null for public / system actions
+  note       String?
+  createdAt  DateTime       @default(now()) @db.Timestamptz(3)
+
+  request AssistanceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+}
+
+// Scheduling and distribution
+
+model CalendarEvent {
+  id               String              @id @default(uuid())
+  type             CalendarEventType
+  title            String
+  description      String?
+  campaignId       String
+  startAt          DateTime            @db.Timestamptz(3)
+  endAt            DateTime            @db.Timestamptz(3)
+  location         String
+  capacity         Int? // optional max beneficiaries
+  status           CalendarEventStatus @default(SCHEDULED)
+  externalProvider String              @default("google")
+  externalEventId  String?
+  syncStatus       SyncStatus          @default(NOT_SYNCED)
+  syncError        String?
+  createdById      String?
+  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @db.Timestamptz(3)
+
+  campaign      Campaign       @relation(fields: [campaignId], references: [id])
+  distributions Distribution[]
+  donations     Donation[]
+
+  @@index([campaignId, startAt])
+  @@index([type, startAt])
+}
+
+model Distribution {
+  id              String             @id @default(uuid())
+  requestId       String
+  calendarEventId String
+  status          DistributionStatus @default(SCHEDULED)
+  notes           String?
+  receivedByName  String? // who collected the goods
+  recordedById    String?
+  distributedAt   DateTime?          @db.Timestamptz(3)
+  reminderSentAt  DateTime?          @db.Timestamptz(3)
+  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
+
+  request       AssistanceRequest  @relation(fields: [requestId], references: [id])
+  calendarEvent CalendarEvent      @relation(fields: [calendarEventId], references: [id])
+  items         DistributionItem[]
+
+  @@index([requestId])
+  @@index([calendarEventId, status])
+}
+
+model DistributionItem {
+  id              String @id @default(uuid())
+  distributionId  String
+  inventoryItemId String
+  quantity        Int // planned; updated to actual on completion
+
+  distribution  Distribution        @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  inventoryItem InventoryItem       @relation(fields: [inventoryItemId], references: [id])
+  movements     InventoryMovement[]
+
+  @@index([distributionId])
+}
+
+// Notifications (outbox), audit, utilities
+
+model EmailNotification {
+  id                String           @id @default(uuid())
+  type              NotificationType
+  toEmail           String
+  subject           String
+  templateData      Json
+  priority          Int              @default(2) // 1 highest
+  status            EmailStatus      @default(QUEUED)
+  attempts          Int              @default(0)
+  lastError         String?
+  providerMessageId String?
+  dedupeKey         String           @unique
+  scheduledFor      DateTime         @default(now()) @db.Timestamptz(3)
+  sentAt            DateTime?        @db.Timestamptz(3)
+  relatedRequestId  String?
+  relatedDonationId String?
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+
+  request  AssistanceRequest? @relation(fields: [relatedRequestId], references: [id])
+  donation Donation?          @relation(fields: [relatedDonationId], references: [id])
+
+  @@index([status, scheduledFor, priority])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String // "donation.verify", "request.approve", "inventory.adjust"
+  entityType String
+  entityId   String
+  metadata   Json?
+  ipHash     String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}
+
+model SequenceCounter {
+  key   String @id // "REQ-2026", "DON-2026"
+  value Int    @default(0)
+}
+
+model ChatUsage {
+  id       String @id @default(uuid())
+  actorKey String // userId, or hashed IP for anonymous visitors
+  day      String // YYYY-MM-DD, Asia/Manila
+  count    Int    @default(0)
+
+  @@unique([actorKey, day])
+}

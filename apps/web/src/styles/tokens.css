@@ -1,0 +1,13 @@
+/* Darkened from the proposal's #667085, which measured 4.40:1 on sage. See design.md. */
+@theme {
+  --color-primary: #0f766e;
+  --color-primary-dark: #115e59;
+  --color-accent: #f97352;
+  --color-accent-hover: #ea6040;
+  --color-bg: #f7f8f5;
+  --color-surface: #ffffff;
+  --color-surface-alt: #eaf3ef;
+  --color-text: #1f2933;
+  --color-text-muted: #5f6875;
+  --color-border: #e2e8e5;
+}
