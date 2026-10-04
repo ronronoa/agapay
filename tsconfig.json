@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Agapay root",
+  "extends": "./tsconfig.base.json",
+  "//": "Holds the root-level JS config so it belongs to a real TypeScript project. Each workspace has its own tsconfig and editors pick the nearest one per file; this file also means an editor opened at the repo root is never left inferring a project, which is what left @agapay/shared unresolved before packages/shared/dist had been built.",
+  "//references": "Deliberately omitted. Project references need composite: true, and composite forbids noEmit, so wiring them would collapse the check/build tsconfig split that keeps test files out of dist. Nothing here runs `tsc -b`.",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
+    "types": ["node"]
+  },
+  "include": ["eslint.config.js"]
+}

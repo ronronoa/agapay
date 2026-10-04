@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -8,6 +9,7 @@ import { env } from './lib/env.js';
 import { logger } from './lib/logger.js';
 import { errorMiddleware, notFoundHandler } from './lib/http/error-middleware.js';
 import { getRequestId, newRequestId, requestContext } from './lib/http/request-context.js';
+import { authRouter } from './modules/auth/auth.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 
 export function createApp() {
@@ -47,6 +49,7 @@ export function createApp() {
 
   // API-03: cap body size before any parser does work on it.
   app.use(express.json({ limit: '100kb' }));
+  app.use(cookieParser());
 
   // Global per-IP budget (api.md §2); route-specific limits layer on top.
   app.use(
@@ -68,6 +71,7 @@ export function createApp() {
     }),
   );
 
+  app.use('/api/v1/auth', authRouter);
   app.use('/api/v1', healthRouter);
 
   app.use(notFoundHandler);
