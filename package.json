@@ -1,0 +1,51 @@
+{
+  "name": "agapay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Calamity relief donation and distribution system",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "prepare": "husky",
+    "build": "npm run build -w @agapay/shared && npm run build -w @agapay/api && npm run build -w @agapay/web",
+    "dev": "npm run build -w @agapay/shared && concurrently -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @agapay/api",
+    "dev:web": "npm run dev -w @agapay/web",
+    "typecheck": "npm run build -w @agapay/shared && npm run typecheck -w @agapay/shared && npm run typecheck -w @agapay/api && npm run typecheck -w @agapay/web",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test -w @agapay/shared && npm run test -w @agapay/api && npm run test -w @agapay/web",
+    "test:integration": "npm run test:integration -w @agapay/api",
+    "test:e2e": "echo \"TODO(M7): Playwright not scaffolded yet\" && exit 0",
+    "db:generate": "npm run db:generate -w @agapay/api",
+    "db:migrate": "npm run db:migrate -w @agapay/api",
+    "db:seed": "npm run db:seed -w @agapay/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.17.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.1",
+    "prettier": "^3.4.2",
+    "typescript-eslint": "^8.19.0"
+  },
+  "allowScripts": {
+    "@prisma/client": true,
+    "@prisma/engines": true,
+    "esbuild": true,
+    "prisma": true
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0"
+  }
+}

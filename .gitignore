@@ -1,1 +1,35 @@
-/docs
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Generated Prisma client
+apps/api/src/generated/
+
+# Environment — never commit real values (hard rule 14)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Test output
+coverage/
+test-results/
+playwright-report/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# docs/ is intentionally tracked: it is the project's source of truth, and
+# AGENTS.md treats STATUS.md and the rules docs as authority.

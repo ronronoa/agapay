@@ -1,0 +1,39 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+@layer base {
+  html {
+    /* Beneficiary-facing pages are read on phones in poor light. */
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family:
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      Roboto,
+      sans-serif;
+    /* Nothing on an operational screen may scroll sideways (rules.md §6). */
+    overflow-x: hidden;
+  }
+
+  /* One visible focus indicator everywhere, never removed. */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
