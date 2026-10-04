@@ -13,7 +13,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
 
-      // ── Public ──
+      // Public
       { path: 'about', element: <NotImplementedPage title="About" /> },
       { path: 'how-it-works', element: <NotImplementedPage title="How It Works" /> },
       { path: 'campaigns', element: <NotImplementedPage title="Campaigns" /> },
@@ -23,7 +23,7 @@ const router = createBrowserRouter([
       { path: 'login', element: <NotImplementedPage title="Log In" /> },
       { path: 'register', element: <NotImplementedPage title="Donor Registration" /> },
 
-      // ── Donor ──
+      // Donor
       { path: 'donate', element: <NotImplementedPage title="Donate" /> },
       {
         path: 'donor',
@@ -34,7 +34,7 @@ const router = createBrowserRouter([
         ],
       },
 
-      // ── Admin ──
+      // Admin
       {
         path: 'admin',
         children: [
