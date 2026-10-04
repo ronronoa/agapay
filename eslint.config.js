@@ -23,7 +23,6 @@ export default tseslint.config(
         // This option does not accept `**` globs.
         projectService: {
           allowDefaultProject: [
-            '*.js',
             'apps/*/vitest.config.ts',
             'packages/*/vitest.config.ts',
             'apps/*/prisma/*.ts',
@@ -66,7 +65,6 @@ export default tseslint.config(
     // Default-project files have no tsconfig, so `process` and
     // `import.meta.dirname` are unresolved and the unsafe-* rules are noise.
     files: [
-      '*.js',
       'apps/*/vitest.config.ts',
       'packages/*/vitest.config.ts',
       'apps/*/prisma/*.ts',
