@@ -1,0 +1,97 @@
+import { CampaignStatus, campaignListResponseSchema, type CampaignDto } from '@agapay/shared';
+import { useApiQuery } from '../../lib/use-api-query';
+import { PageHeader } from '../../components/layout/PageHeader';
+import { AsyncBoundary } from '../../components/ui/AsyncBoundary';
+import { DataTable, type Column } from '../../components/ui/DataTable';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'Draft',
+  ACTIVE: 'Active',
+  COMPLETED: 'Completed',
+  ARCHIVED: 'Archived',
+};
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-PH', { dateStyle: 'medium' });
+}
+
+export function CampaignsPage() {
+  const query = useApiQuery(
+    ['campaigns'],
+    '/api/v1/campaigns?pageSize=100',
+    campaignListResponseSchema,
+  );
+
+  const columns: Column<CampaignDto>[] = [
+    {
+      key: 'name',
+      header: 'Campaign',
+      render: (row) => <span className="font-medium">{row.name}</span>,
+    },
+    {
+      key: 'calamity',
+      header: 'Calamity',
+      render: (row) => (
+        <span className="capitalize">{row.calamityType.toLowerCase().replace('_', ' ')}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      // Label plus text, never colour alone (design.md section 13).
+      render: (row) => (
+        <StatusBadge
+          label={STATUS_LABEL[row.status] ?? row.status}
+          muted={row.status === CampaignStatus.ARCHIVED || row.status === CampaignStatus.COMPLETED}
+        />
+      ),
+    },
+    { key: 'start', header: 'Starts', render: (row) => formatDate(row.startDate) },
+    {
+      key: 'end',
+      header: 'Ends',
+      render: (row) => (row.endDate === null ? 'Open' : formatDate(row.endDate)),
+    },
+    {
+      key: 'areas',
+      header: 'Areas',
+      render: (row) => (row.areas.length === 0 ? '—' : String(row.areas.length)),
+    },
+    {
+      key: 'priority',
+      header: 'Priority goods',
+      render: (row) => (row.priorityItems.length === 0 ? '—' : String(row.priorityItems.length)),
+    },
+    { key: 'requests', header: 'Requests', render: (row) => String(row.requestCount) },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Campaigns"
+        description="Relief campaigns and their covered areas and priority goods."
+      />
+
+      <AsyncBoundary
+        data={query.data?.data.items ?? null}
+        error={query.error}
+        isPending={query.isPending}
+        onRetry={query.refetch}
+        loadingLabel="Loading campaigns…"
+        isEmpty={(items) => items.length === 0}
+        emptyTitle="No campaigns yet"
+        emptyDescription="Create a campaign to start accepting donations and assistance requests."
+      >
+        {(items) => (
+          <DataTable
+            caption="Relief campaigns"
+            columns={columns}
+            rows={items}
+            rowKey={(row) => row.id}
+          />
+        )}
+      </AsyncBoundary>
+    </div>
+  );
+}

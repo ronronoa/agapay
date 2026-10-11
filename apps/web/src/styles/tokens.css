@@ -1,13 +1,39 @@
-/* Darkened from the proposal's #667085, which measured 4.40:1 on sage. See design.md. */
 @theme {
   --color-primary: #0f766e;
-  --color-primary-dark: #115e59;
+  --color-primary-dark: #3d6162;
+  --color-primary-subtle: #4c7273;
   --color-accent: #f97352;
   --color-accent-hover: #ea6040;
-  --color-bg: #f7f8f5;
+  --color-bg: #f8fafc;
   --color-surface: #ffffff;
   --color-surface-alt: #eaf3ef;
-  --color-text: #1f2933;
-  --color-text-muted: #5f6875;
-  --color-border: #e2e8e5;
+  --color-text: #183327;
+  --color-text-muted: #625f5f;
+  --color-info-bg: #e6f2f2;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-warning-text: #92400e;
+  --color-success-bg: #dcfce7;
+  --color-success-text: #166534;
+  --color-warning-pill-bg: #fef3c7;
+  --color-error-bg: #fee2e2;
+  --color-error-text: #991b1b;
+
+  /* Decorative only: card edges and dividers, where the surface fill already
+     identifies the container. 1.71:1, which is under the 3:1 UI minimum. */
+  --color-border: #bac9c9;
+
+  /* Anything whose edge is the only affordance: inputs, selects, checkboxes.
+     3.69:1 to 4.18:1, clears the 3:1 UI minimum on every surface. */
+  --color-border-strong: #6b8080;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-sm: 0 1px 2px 0 rgb(24 51 39 / 0.06);
+  --shadow-card: 0 1px 3px 0 rgb(24 51 39 / 0.08), 0 1px 2px -1px rgb(24 51 39 / 0.06);
+  --shadow-md: 0 4px 8px -2px rgb(24 51 39 / 0.1), 0 2px 4px -2px rgb(24 51 39 / 0.06);
+  --shadow-lg: 0 12px 20px -4px rgb(24 51 39 / 0.12), 0 4px 8px -4px rgb(24 51 39 / 0.06);
 }
