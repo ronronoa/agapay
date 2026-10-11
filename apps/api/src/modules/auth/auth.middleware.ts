@@ -6,8 +6,14 @@ import { prisma } from '../../lib/prisma.js';
 import { env } from '../../lib/env.js';
 import { verifyAccessToken } from './tokens.js';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from './auth.config.js';
+import type { AuthContext } from '../../types/express.js';
 
 const BEARER = /^Bearer (.+)$/;
+
+export function actorFrom(req: Request): AuthContext {
+  if (req.auth === undefined) throw unauthenticated();
+  return req.auth;
+}
 
 export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {

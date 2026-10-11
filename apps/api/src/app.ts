@@ -10,6 +10,10 @@ import { logger } from './lib/logger.js';
 import { errorMiddleware, notFoundHandler } from './lib/http/error-middleware.js';
 import { getRequestId, newRequestId, requestContext } from './lib/http/request-context.js';
 import { authRouter } from './modules/auth/auth.routes.js';
+import { auditRouter } from './modules/audit/audit.routes.js';
+import { campaignsRouter } from './modules/campaigns/campaigns.routes.js';
+import { itemTypesRouter } from './modules/item-types/item-types.routes.js';
+import { usersRouter } from './modules/users/users.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 
 export function createApp() {
@@ -72,6 +76,10 @@ export function createApp() {
   );
 
   app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/audit-logs', auditRouter);
+  app.use('/api/v1/campaigns', campaignsRouter);
+  app.use('/api/v1/item-types', itemTypesRouter);
+  app.use('/api/v1/users', usersRouter);
   app.use('/api/v1', healthRouter);
 
   app.use(notFoundHandler);

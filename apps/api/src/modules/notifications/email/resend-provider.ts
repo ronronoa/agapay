@@ -7,8 +7,6 @@ export interface ResendProviderOptions {
   from: string;
 }
 
-// No retry here on purpose: the worker owns the retry policy and records each
-// attempt on the outbox row, where admins can see it (OPS-03).
 export function createResendProvider(options: ResendProviderOptions): EmailProvider {
   const client = new Resend(options.apiKey);
 
@@ -26,7 +24,6 @@ export function createResendProvider(options: ResendProviderOptions): EmailProvi
         'resend send',
       );
 
-      // The SDK reports failures in-band rather than by throwing.
       if (response.error) {
         throw new Error(`Resend rejected the message: ${response.error.message}`);
       }

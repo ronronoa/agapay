@@ -21,7 +21,7 @@ export default tseslint.config(
       parserOptions: {
         // Config files and the seed sit outside every tsconfig include.
         // This option does not accept `**` globs.
-        projectService: {
+        projectService: { 
           allowDefaultProject: [
             'apps/*/vitest.config.ts',
             'packages/*/vitest.config.ts',

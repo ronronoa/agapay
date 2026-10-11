@@ -1,5 +1,7 @@
 // Idempotent, so safe to re-run. Demo data is gated behind SEED_DEMO=true.
 import { PrismaClient } from '@prisma/client';
+import { hashPassword } from '../src/modules/auth/password.js';
+import { env } from '../src/lib/env.js';
 
 const prisma = new PrismaClient();
 
@@ -45,6 +47,28 @@ async function seedItemTypes() {
   }
 }
 
+async function seedAdmin() {
+  const email = env.SEED_ADMIN_EMAIL;
+  const password = env.SEED_ADMIN_PASSWORD;
+  if (email === undefined || password === undefined) return false;
+
+  // Re-hashed each run, so rotating the env password takes effect on reseed.
+  const passwordHash = await hashPassword(password);
+  await prisma.user.upsert({
+    where: { email },
+    update: { passwordHash, role: 'ADMIN', isActive: true },
+    create: {
+      name: 'Agapay Admin',
+      email,
+      passwordHash,
+      role: 'ADMIN',
+      isActive: true,
+      emailVerifiedAt: new Date(),
+    },
+  });
+  return true;
+}
+
 async function main() {
   const seedDemo = process.env.SEED_DEMO === 'true';
   if (seedDemo && process.env.NODE_ENV === 'production') {
@@ -53,14 +77,13 @@ async function main() {
 
   await seedGeneralPool();
   await seedItemTypes();
+  const seededAdmin = await seedAdmin();
 
-  // TODO(M1): bootstrap ADMIN from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD.
-  // argon2 is not a dependency yet; password hashing arrives with the auth module.
-  //
   // TODO(M5): SEED_DEMO block — demo campaign, donors, donations, requests, and
   // opening stock, so UAT screens are not empty.
 
-  console.log('Seed complete: General Pool campaign and item types.');
+  console.log('Seed complete: General Pool campaign, item types.');
+  console.log(seededAdmin ? 'Bootstrap admin ensured from env.' : 'No bootstrap admin configured.');
 }
 
 main()

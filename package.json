@@ -51,5 +51,8 @@
   "overrides": {
     "deepmerge-ts": "^8.0.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "pg-boss": "^12.37.1"
   }
 }

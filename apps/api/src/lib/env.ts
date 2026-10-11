@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { emailSchema, passwordSchema } from '@agapay/shared';
 
 // Parsed once at import so a bad value crashes at boot, not on the first request
 // that needs it. Optional settings are added when their module lands, so a
@@ -24,6 +25,9 @@ const envSchema = z
     // below it with headroom for retries. Raising this past the plan limit
     // silently suppresses nothing — it just starts failing sends.
     EMAIL_DAILY_LIMIT: z.coerce.number().int().positive().default(90),
+
+    SEED_ADMIN_EMAIL: emailSchema.optional(),
+    SEED_ADMIN_PASSWORD: passwordSchema.optional(),
   })
   // Cross-field check: selecting a real provider without its credential would
   // otherwise fail later, inside a worker, at 3am.
@@ -34,7 +38,16 @@ const envSchema = z
   .refine((value) => value.EMAIL_DAILY_LIMIT <= 100, {
     message: 'EMAIL_DAILY_LIMIT above 100 exceeds the Resend free-tier daily cap',
     path: ['EMAIL_DAILY_LIMIT'],
-  });
+  })
+  // Half a bootstrap admin is worse than none: it would silently leave the
+  // system with no way in.
+  .refine(
+    (value) => (value.SEED_ADMIN_EMAIL === undefined) === (value.SEED_ADMIN_PASSWORD === undefined),
+    {
+      message: 'SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD must be set together',
+      path: ['SEED_ADMIN_PASSWORD'],
+    },
+  );
 
 export type Env = z.infer<typeof envSchema>;
 

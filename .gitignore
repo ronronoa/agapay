@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
-
+agapay_ui/
+docs/
 # Build output
 dist/
 build/
