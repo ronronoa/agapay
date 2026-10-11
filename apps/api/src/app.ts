@@ -15,6 +15,7 @@ import { campaignsRouter } from './modules/campaigns/campaigns.routes.js';
 import { itemTypesRouter } from './modules/item-types/item-types.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
+import { notificationsRouter } from './modules/notifications/notification.routes.js';
 
 export function createApp() {
   const app = express();
@@ -80,6 +81,7 @@ export function createApp() {
   app.use('/api/v1/campaigns', campaignsRouter);
   app.use('/api/v1/item-types', itemTypesRouter);
   app.use('/api/v1/users', usersRouter);
+  app.use('/api/v1/notifications/emails', notificationsRouter);
   app.use('/api/v1', healthRouter);
 
   app.use(notFoundHandler);

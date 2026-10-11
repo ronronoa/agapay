@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { env } from './lib/env.js';
 import { logger } from './lib/logger.js';
 import { disconnectPrisma } from './lib/prisma.js';
+import { startEmailWorker, stopEmailWorker } from './jobs/email-worker.js';
 
 const app = createApp();
 const server = createServer(app);
@@ -11,10 +12,12 @@ server.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'api listening');
 });
 
+startEmailWorker().catch((err: unknown) => {
+  logger.error({ err }, 'email worker failed to start; outbox will not drain');
+});
+
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
-// A deploy must not cut an in-flight request in half (OPS-01).
-// TODO(M2): stop the pg-boss workers here once src/jobs/ exists.
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
     logger.info({ signal }, 'shutting down');
@@ -26,7 +29,11 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     }, SHUTDOWN_TIMEOUT_MS);
     forceExit.unref();
 
-    void disconnectPrisma()
+    void stopEmailWorker()
+      .catch((err: unknown) => {
+        logger.error({ err }, 'failed to stop email worker cleanly');
+      })
+      .then(() => disconnectPrisma())
       .catch((err: unknown) => {
         logger.error({ err }, 'failed to disconnect prisma cleanly');
       })

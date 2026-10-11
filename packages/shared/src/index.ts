@@ -6,5 +6,6 @@ export * from './enums.js';
 export * from './errors.js';
 export * from './item-types.js';
 export * from './list.js';
+export * from './notifications.js';
 export * from './status-messages.js';
 export * from './users.js';

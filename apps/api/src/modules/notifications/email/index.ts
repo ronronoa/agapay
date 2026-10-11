@@ -1,5 +1,6 @@
 import { env } from '../../../lib/env.js';
 import type { EmailProvider } from './email-provider.js';
+export type { EmailProvider } from './email-provider.js';
 import { createConsoleProvider } from './console-provider.js';
 import { createResendProvider } from './resend-provider.js';
 
