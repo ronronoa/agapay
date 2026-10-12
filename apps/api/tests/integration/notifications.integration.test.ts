@@ -16,6 +16,7 @@ import { FixedClock } from '../../src/lib/clock.js';
 import { createApp } from '../../src/app.js';
 import { hashPassword } from '../../src/modules/auth/password.js';
 import { drainOnce, isOverBudget } from '../../src/jobs/email-worker.js';
+import { createConsoleProvider } from '../../src/modules/notifications/email/console-provider.js';
 import type { EmailProvider } from '../../src/modules/notifications/email/index.js';
 
 const app = createApp();
@@ -79,7 +80,7 @@ async function queueVerifyEmail(): Promise<string> {
 describe('email outbox worker', () => {
   it('drains a queued verification email to SENT', async () => {
     const id = await queueVerifyEmail();
-    const result = await drainOnce();
+    const result = await drainOnce({ provider: createConsoleProvider() });
     expect(result.sent).toBeGreaterThanOrEqual(1);
     const row = await prisma.emailNotification.findUnique({ where: { id } });
     expect(row?.status).toBe('SENT');
@@ -186,7 +187,7 @@ describe('GET /notifications/emails/usage', () => {
       .set('Authorization', `Bearer ${staffToken}`);
     const beforeCount = parse(before, emailUsageResponseSchema).data.sentToday;
     const id = await queueVerifyEmail();
-    await drainOnce();
+    await drainOnce({ provider: createConsoleProvider() });
     const after = await request(app)
       .get('/api/v1/notifications/emails/usage')
       .set('X-Forwarded-For', uniqueIp())

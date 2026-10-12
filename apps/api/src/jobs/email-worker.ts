@@ -167,17 +167,16 @@ export async function startEmailWorker(): Promise<void> {
     logger.error({ err }, 'pg-boss error');
   });
   await instance.start();
-  try {
-    await instance.schedule(SWEEP_QUEUE, SWEEP_CRON);
-  } catch (err) {
-    // A previous run already registered the schedule; this process only needs
-    // its own handler below.
-    logger.warn({ err }, 'email sweep schedule already exists; reusing it');
-  }
+  // create_queue() is idempotent (ON CONFLICT DO NOTHING), so this is safe on
+  // every boot. The queue row must exist before schedule(), whose table holds
+  // a foreign key to it — scheduling first fails with "Queue not found".
+  await instance.createQueue(SWEEP_QUEUE);
   await instance.work(SWEEP_QUEUE, async (): Promise<unknown> => {
     await drainOnce();
     return undefined;
   });
+  // Upsert on (name): re-running only refreshes the cron expression.
+  await instance.schedule(SWEEP_QUEUE, SWEEP_CRON);
   boss = instance;
   logger.info('email worker started');
   await drainOnce();
