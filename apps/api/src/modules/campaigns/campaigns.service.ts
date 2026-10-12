@@ -126,6 +126,12 @@ export async function getById(id: string): Promise<CampaignDto> {
   return toDto(row);
 }
 
+export async function getBySlug(slug: string): Promise<CampaignDto> {
+  const row = await prisma.campaign.findUnique({ where: { slug }, include: campaignInclude });
+  if (row === null) throw notFound('Campaign');
+  return toDto(row);
+}
+
 export async function create(
   input: CreateCampaignInput,
   actor: AuthContext,

@@ -1,7 +1,7 @@
 // `const` objects, not TS `enum` (TS-09). Changing a Prisma enum means changing
 // this in the same commit, or the types stop matching the database.
 const defineEnum = <T extends readonly string[]>(values: T) =>
-  Object.fromEntries(values.map((v) => [v, v])) as Record<T[number], T[number]>;
+  Object.fromEntries(values.map((v) => [v, v])) as { [K in T[number]]: K };
 
 export const UserRole = defineEnum(['DONOR', 'STAFF', 'ADMIN'] as const);
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];

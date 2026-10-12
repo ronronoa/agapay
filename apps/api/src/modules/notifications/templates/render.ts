@@ -3,6 +3,7 @@ import { internal } from '../../../lib/errors.js';
 
 export const VERIFY_EMAIL_PATH = '/verify-email';
 export const RESET_PASSWORD_PATH = '/reset-password';
+export const REQUEST_VERIFY_PATH = '/verify-request';
 
 export interface RenderedEmail {
   subject: string;
@@ -134,11 +135,68 @@ export function renderEmail(
           `You are welcome to submit a new donation at any time.`,
       };
     }
-    case 'REQUEST_APPROVED':
-    case 'REQUEST_RECEIVED':
-    case 'REQUEST_REJECTED':
+    case 'REQUEST_RECEIVED': {
+      const name = field(templateData, 'name');
+      const referenceNumber = field(templateData, 'referenceNumber');
+      return {
+        subject: 'We received your assistance request',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>We received your assistance request ${escapeHtml(referenceNumber)}. Our team will review it and email you the outcome.</p>`,
+        text:
+          `Hi ${name},\n\nWe received your assistance request ${referenceNumber}. ` +
+          `Our team will review it and email you the outcome.`,
+      };
+    }
+    case 'REQUEST_VERIFY_EMAIL': {
+      const name = field(templateData, 'name');
+      const token = field(templateData, 'token');
+      return {
+        subject: 'Confirm your email for your assistance request',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>Please confirm your email address so we can reach you about your request:</p>` +
+          `<p><a href="${escapeHtml(`${webOrigin}${REQUEST_VERIFY_PATH}?token=${encodeURIComponent(token)}`)}">Confirm my email address</a></p>` +
+          `<p>If you did not submit a request, you can ignore this email.</p>`,
+        text:
+          `Hi ${name},\n\nPlease confirm your email address so we can reach you about your request:\n` +
+          `${webOrigin}${REQUEST_VERIFY_PATH}?token=${encodeURIComponent(token)}\n\n` +
+          `If you did not submit a request, you can ignore this email.`,
+      };
+    }
+    case 'REQUEST_APPROVED': {
+      const name = field(templateData, 'name');
+      const referenceNumber = field(templateData, 'referenceNumber');
+      const trackingNumber = field(templateData, 'trackingNumber');
+      return {
+        subject: 'Your assistance request was approved',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>Good news: your assistance request ${escapeHtml(referenceNumber)} was approved.</p>` +
+          `<p>Your tracking number is <strong>${escapeHtml(trackingNumber)}</strong>. Keep it together with your email address to follow your request.</p>`,
+        text:
+          `Hi ${name},\n\nGood news: your assistance request ${referenceNumber} was approved.\n` +
+          `Your tracking number is ${trackingNumber}. Keep it together with your email address to follow your request.`,
+      };
+    }
+    case 'REQUEST_REJECTED': {
+      const name = field(templateData, 'name');
+      const referenceNumber = field(templateData, 'referenceNumber');
+      const reason = field(templateData, 'reason');
+      return {
+        subject: 'Update on your assistance request',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>Thanks for reaching out. We could not approve your request ${escapeHtml(referenceNumber)} this time:</p>` +
+          `<p>${escapeHtml(reason)}</p>` +
+          `<p>If you think this is a mistake, please contact our team.</p>`,
+        text:
+          `Hi ${name},\n\nThanks for reaching out. ` +
+          `We could not approve your request ${referenceNumber} this time:\n${reason}\n\n` +
+          `If you think this is a mistake, please contact our team.`,
+      };
+    }
     case 'REQUEST_STATUS_UPDATED':
-    case 'REQUEST_VERIFY_EMAIL':
       return notImplemented(type);
     default:
       return notImplemented(type);

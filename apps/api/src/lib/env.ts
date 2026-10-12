@@ -26,6 +26,8 @@ const envSchema = z
     // silently suppresses nothing — it just starts failing sends.
     EMAIL_DAILY_LIMIT: z.coerce.number().int().positive().default(90),
 
+    TURNSTILE_SECRET: z.string().min(1).optional(),
+
     SEED_ADMIN_EMAIL: emailSchema.optional(),
     SEED_ADMIN_PASSWORD: passwordSchema.optional(),
   })
