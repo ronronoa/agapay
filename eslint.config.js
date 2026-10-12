@@ -19,13 +19,12 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        // Config files and the seed sit outside every tsconfig include.
+        // Config files sit outside every tsconfig include.
         // This option does not accept `**` globs.
         projectService: { 
           allowDefaultProject: [
             'apps/*/vitest.config.ts',
             'packages/*/vitest.config.ts',
-            'apps/*/prisma/*.ts',
           ],
         },
         tsconfigRootDir: import.meta.dirname,
