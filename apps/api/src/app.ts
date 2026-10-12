@@ -14,6 +14,8 @@ import { auditRouter } from './modules/audit/audit.routes.js';
 import { campaignsRouter } from './modules/campaigns/campaigns.routes.js';
 import { itemTypesRouter } from './modules/item-types/item-types.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
+import { donationsRouter } from './modules/donations/donations.routes.js';
+import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { notificationsRouter } from './modules/notifications/notification.routes.js';
 
@@ -81,6 +83,8 @@ export function createApp() {
   app.use('/api/v1/campaigns', campaignsRouter);
   app.use('/api/v1/item-types', itemTypesRouter);
   app.use('/api/v1/users', usersRouter);
+  app.use('/api/v1/donations', donationsRouter);
+  app.use('/api/v1/inventory', inventoryRouter);
   app.use('/api/v1/notifications/emails', notificationsRouter);
   app.use('/api/v1', healthRouter);
 

@@ -90,9 +90,50 @@ export function renderEmail(
     case 'DISTRIBUTION_COMPLETED':
     case 'DISTRIBUTION_REMINDER':
     case 'DISTRIBUTION_SCHEDULED':
-    case 'DONATION_REJECTED':
-    case 'DONATION_SUBMITTED':
-    case 'DONATION_VERIFIED':
+    case 'DONATION_SUBMITTED': {
+      const name = field(templateData, 'name');
+      const referenceNumber = field(templateData, 'referenceNumber');
+      return {
+        subject: 'We received your donation',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>Thanks for supporting relief efforts. Your donation ${escapeHtml(referenceNumber)} is awaiting verification. We will email you once our team reviews it.</p>`,
+        text:
+          `Hi ${name},\n\nThanks for supporting relief efforts. ` +
+          `Your donation ${referenceNumber} is awaiting verification. ` +
+          `We will email you once our team reviews it.`,
+      };
+    }
+    case 'DONATION_VERIFIED': {
+      const name = field(templateData, 'name');
+      const referenceNumber = field(templateData, 'referenceNumber');
+      return {
+        subject: 'Your donation was verified',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>Good news: your donation ${escapeHtml(referenceNumber)} passed verification. We will email you again when collection is scheduled.</p>`,
+        text:
+          `Hi ${name},\n\nGood news: your donation ${referenceNumber} passed verification. ` +
+          `We will email you again when collection is scheduled.`,
+      };
+    }
+    case 'DONATION_REJECTED': {
+      const name = field(templateData, 'name');
+      const referenceNumber = field(templateData, 'referenceNumber');
+      const reason = field(templateData, 'reason');
+      return {
+        subject: 'Update on your donation',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>Thanks for offering to help. We could not accept your donation ${escapeHtml(referenceNumber)} this time:</p>` +
+          `<p>${escapeHtml(reason)}</p>` +
+          `<p>You are welcome to submit a new donation at any time.</p>`,
+        text:
+          `Hi ${name},\n\nThanks for offering to help. ` +
+          `We could not accept your donation ${referenceNumber} this time:\n${reason}\n\n` +
+          `You are welcome to submit a new donation at any time.`,
+      };
+    }
     case 'REQUEST_APPROVED':
     case 'REQUEST_RECEIVED':
     case 'REQUEST_REJECTED':
