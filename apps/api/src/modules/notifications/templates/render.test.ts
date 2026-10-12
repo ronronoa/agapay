@@ -22,7 +22,7 @@ describe('renderEmail', () => {
   });
 
   it('fails loudly for types whose module has not landed yet', () => {
-    expect(() => renderEmail('REQUEST_APPROVED', {}, 'http://localhost:5173')).toThrow(
+    expect(() => renderEmail('REQUEST_STATUS_UPDATED', {}, 'http://localhost:5173')).toThrow(
       /not implemented/,
     );
   });
