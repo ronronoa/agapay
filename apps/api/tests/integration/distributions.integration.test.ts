@@ -1,0 +1,507 @@
+import { describe, expect, it } from 'vitest';
+import request from 'supertest';
+import type { z } from 'zod';
+import {
+  DistributionStatus,
+  RequestStatus,
+  UserRole,
+  accessTokenResponseSchema,
+  calendarEventListResponseSchema,
+  calendarEventResponseSchema,
+  distributionListResponseSchema,
+  distributionResponseSchema,
+  donationResponseSchema,
+  errorEnvelopeSchema,
+  inventoryListResponseSchema,
+  submitRequestResponseSchema,
+} from '@agapay/shared';
+import { prisma } from '../../src/lib/prisma.js';
+import { createApp } from '../../src/app.js';
+import { hashPassword } from '../../src/modules/auth/password.js';
+
+const app = createApp();
+const PASSWORD = 'integration test secret';
+const RUN = `${process.pid.toString(36)}${Date.now().toString(36).slice(-4)}`;
+
+let seq = 0;
+let ipSeq = 0;
+const uniqueIp = (): string => `198.51.100.${((ipSeq += 1) % 250) + 1}`;
+
+function parse<T>(res: request.Response, schema: z.ZodType<T, z.ZodTypeDef, unknown>): T {
+  const parsed = schema.safeParse(res.body);
+  if (!parsed.success) throw new Error('unexpected response body');
+  return parsed.data;
+}
+
+const errorCode = (res: request.Response): string => parse(res, errorEnvelopeSchema).error.code;
+
+interface Actor {
+  token: string;
+  id: string;
+}
+
+async function makeUser(role: UserRole, verified: boolean): Promise<Actor> {
+  const email = `m4-${RUN}-${seq++}@example.com`;
+  const user = await prisma.user.create({
+    data: {
+      name: 'M4 Actor',
+      email,
+      passwordHash: await hashPassword(PASSWORD),
+      role,
+      emailVerifiedAt: verified ? new Date() : null,
+    },
+  });
+  const res = await request(app)
+    .post('/api/v1/auth/login')
+    .set('X-Forwarded-For', uniqueIp())
+    .send({ email, password: PASSWORD });
+  return { token: parse(res, accessTokenResponseSchema).data.accessToken, id: user.id };
+}
+
+let staff: Actor;
+let donor: Actor;
+let campaignId = '';
+let foodTypeId = '';
+let hygieneTypeId = '';
+
+async function setupFixtures(): Promise<void> {
+  staff = await makeUser(UserRole.STAFF, true);
+  donor = await makeUser(UserRole.DONOR, true);
+  const campaign = await prisma.campaign.create({
+    data: {
+      name: `M4 Relief ${RUN}`,
+      slug: `m4-relief-${RUN}`,
+      description: 'M4 fixture campaign',
+      calamityType: 'TYPHOON',
+      status: 'ACTIVE',
+      startDate: new Date(),
+      createdById: staff.id,
+      areas: {
+        create: [{ barangay: 'San Isidro', city: 'Quezon City', province: 'Metro Manila' }],
+      },
+    },
+    select: { id: true },
+  });
+  campaignId = campaign.id;
+  const food = await prisma.itemType.create({
+    data: { name: `M4 Food ${RUN}`, category: 'FOOD', unit: 'pack' },
+    select: { id: true },
+  });
+  foodTypeId = food.id;
+  const hygiene = await prisma.itemType.create({
+    data: { name: `M4 Hygiene ${RUN}`, category: 'HYGIENE', unit: 'kit' },
+    select: { id: true },
+  });
+  hygieneTypeId = hygiene.id;
+  for (const itemTypeId of [foodTypeId, hygieneTypeId]) {
+    const res = await staffPost('/api/v1/inventory/adjustments', {
+      itemTypeId,
+      campaignId,
+      direction: 'IN',
+      quantity: 100,
+      reason: 'M4 opening stock.',
+    });
+    expect(res.status).toBe(200);
+  }
+}
+
+function auth(token: string): { Authorization: string } {
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function staffPost(url: string, body: Record<string, unknown>): Promise<request.Response> {
+  return request(app)
+    .post(url)
+    .set('X-Forwarded-For', uniqueIp())
+    .set(auth(staff.token))
+    .send(body);
+}
+
+async function staffGet(url: string): Promise<request.Response> {
+  return request(app).get(url).set('X-Forwarded-For', uniqueIp()).set(auth(staff.token));
+}
+
+async function makeEvent(type: string, title: string): Promise<string> {
+  const res = await staffPost('/api/v1/calendar/events', {
+    type,
+    title,
+    campaignId,
+    startAt: '2026-11-01T01:00:00Z',
+    endAt: '2026-11-01T04:00:00Z',
+    location: 'Barangay San Isidro Hall',
+  });
+  expect(res.status).toBe(201);
+  return parse(res, calendarEventResponseSchema).data.id;
+}
+
+async function approvedRequest(): Promise<string> {
+  const email = `m4bene-${RUN}-${seq++}@example.com`;
+  const sub = await request(app)
+    .post('/api/v1/public/assistance-requests')
+    .set('X-Forwarded-For', uniqueIp())
+    .send({
+      fullName: 'M4 Beneficiary',
+      email,
+      contactNumber: '09171234567',
+      barangay: 'San Isidro',
+      city: 'Quezon City',
+      province: 'Metro Manila',
+      campaignId,
+      items: [
+        { itemTypeId: foodTypeId, quantity: 5 },
+        { itemTypeId: hygieneTypeId, quantity: 3 },
+      ],
+      consent: true,
+      turnstileToken: 'x',
+    });
+  expect(sub.status).toBe(201);
+  const ref = parse(sub, submitRequestResponseSchema).data.referenceNumber;
+  const row = await prisma.assistanceRequest.findUniqueOrThrow({
+    where: { referenceNumber: ref },
+    select: { id: true },
+  });
+  expect((await staffPost(`/api/v1/assistance-requests/${row.id}/claim`, {})).status).toBe(200);
+  const approved = await staffPost(`/api/v1/assistance-requests/${row.id}/approve`, {});
+  expect(approved.status).toBe(200);
+  return row.id;
+}
+
+async function allocate(requestId: string, eventId: string): Promise<request.Response> {
+  return staffPost('/api/v1/distributions', {
+    requestId,
+    calendarEventId: eventId,
+    items: [
+      { itemTypeId: foodTypeId, quantity: 5 },
+      { itemTypeId: hygieneTypeId, quantity: 3 },
+    ],
+  });
+}
+
+async function stockOf(itemTypeId: string): Promise<{ available: number; reserved: number }> {
+  const list = parse(
+    await staffGet(`/api/v1/inventory?campaignId=${campaignId}&itemTypeId=${itemTypeId}`),
+    inventoryListResponseSchema,
+  ).data.items[0];
+  if (list === undefined) throw new Error('stock row missing');
+  return { available: list.available, reserved: list.reserved };
+}
+
+describe('M4 distributions and calendar', () => {
+  it('seeds fixtures once', async () => {
+    await setupFixtures();
+    expect(campaignId).not.toBe('');
+  });
+
+  it('validates event windows and locations', async () => {
+    const backwards = await staffPost('/api/v1/calendar/events', {
+      type: 'DISTRIBUTION',
+      title: 'Backwards',
+      campaignId,
+      startAt: '2026-11-01T04:00:00Z',
+      endAt: '2026-11-01T01:00:00Z',
+      location: 'Hall',
+    });
+    expect(backwards.status).toBe(400);
+
+    const noLocation = await staffPost('/api/v1/calendar/events', {
+      type: 'DISTRIBUTION',
+      title: 'Nowhere',
+      campaignId,
+      startAt: '2026-11-01T01:00:00Z',
+      endAt: '2026-11-01T04:00:00Z',
+    });
+    expect(noLocation.status).toBe(400);
+  });
+
+  it('reserves stock and schedules the request with mail', async () => {
+    const requestId = await approvedRequest();
+    const eventId = await makeEvent('DISTRIBUTION', `M4 Dist ${RUN}`);
+    const before = await stockOf(foodTypeId);
+    const res = await allocate(requestId, eventId);
+    expect(res.status).toBe(201);
+    const created = parse(res, distributionResponseSchema).data;
+    expect(created.status).toBe(DistributionStatus.SCHEDULED);
+    expect(created.items).toHaveLength(2);
+
+    const after = await stockOf(foodTypeId);
+    expect(after.available).toBe(before.available - 5);
+    expect(after.reserved).toBe(before.reserved + 5);
+
+    const request = await prisma.assistanceRequest.findUniqueOrThrow({
+      where: { id: requestId },
+      select: { status: true },
+    });
+    expect(request.status).toBe(RequestStatus.SCHEDULED);
+    const mails = await prisma.emailNotification.count({
+      where: { type: 'DISTRIBUTION_SCHEDULED', relatedRequestId: requestId },
+    });
+    expect(mails).toBe(1);
+  });
+
+  it('refuses short stock with 409 and no side effects', async () => {
+    const requestId = await approvedRequest();
+    const eventId = await makeEvent('DISTRIBUTION', `M4 Short ${RUN}`);
+    const res = await staffPost('/api/v1/distributions', {
+      requestId,
+      calendarEventId: eventId,
+      items: [{ itemTypeId: foodTypeId, quantity: 999_999 }],
+    });
+    expect(res.status).toBe(409);
+    expect(errorCode(res)).toBe('INSUFFICIENT_STOCK');
+
+    const request = await prisma.assistanceRequest.findUniqueOrThrow({
+      where: { id: requestId },
+      select: { status: true },
+    });
+    expect(request.status).toBe(RequestStatus.APPROVED);
+    const dists = await prisma.distribution.count({ where: { requestId } });
+    expect(dists).toBe(0);
+  });
+
+  it('refuses non-approved requests, wrong events, and second live allocations', async () => {
+    const pending = await request(app)
+      .post('/api/v1/public/assistance-requests')
+      .set('X-Forwarded-For', uniqueIp())
+      .send({
+        fullName: 'M4 Pending',
+        email: `pending-${RUN}@example.com`,
+        contactNumber: '09171234567',
+        barangay: 'San Isidro',
+        city: 'Quezon City',
+        province: 'Metro Manila',
+        campaignId,
+        items: [{ itemTypeId: foodTypeId, quantity: 1 }],
+        consent: true,
+        turnstileToken: 'x',
+      });
+    const pendingRef = parse(pending, submitRequestResponseSchema).data.referenceNumber;
+    const pendingRow = await prisma.assistanceRequest.findUniqueOrThrow({
+      where: { referenceNumber: pendingRef },
+      select: { id: true },
+    });
+    const eventId = await makeEvent('DISTRIBUTION', `M4 Guard ${RUN}`);
+    const notApproved = await staffPost('/api/v1/distributions', {
+      requestId: pendingRow.id,
+      calendarEventId: eventId,
+      items: [{ itemTypeId: foodTypeId, quantity: 1 }],
+    });
+    expect(notApproved.status).toBe(409);
+
+    const collectionId = await makeEvent('COLLECTION', `M4 Collect ${RUN}`);
+    const requestId = await approvedRequest();
+    const wrongType = await staffPost('/api/v1/distributions', {
+      requestId,
+      calendarEventId: collectionId,
+      items: [{ itemTypeId: foodTypeId, quantity: 1 }],
+    });
+    expect(wrongType.status).toBe(422);
+
+    const first = await allocate(requestId, eventId);
+    expect(first.status).toBe(201);
+    const second = await allocate(requestId, eventId);
+    expect(second.status).toBe(409);
+  });
+
+  it('completes partial quantities and refuses over-distribution', async () => {
+    const requestId = await approvedRequest();
+    const eventId = await makeEvent('DISTRIBUTION', `M4 Complete ${RUN}`);
+    const created = parse(await allocate(requestId, eventId), distributionResponseSchema).data;
+    const foodItem = created.items.find((item) => item.itemTypeId === foodTypeId);
+    const hygieneItem = created.items.find((item) => item.itemTypeId === hygieneTypeId);
+    if (foodItem === undefined || hygieneItem === undefined) throw new Error('items missing');
+
+    const over = await staffPost(`/api/v1/distributions/${created.id}/complete`, {
+      receivedByName: 'Maria Santos',
+      items: [
+        { distributionItemId: foodItem.id, quantity: 6 },
+        { distributionItemId: hygieneItem.id, quantity: 3 },
+      ],
+    });
+    expect(over.status).toBe(422);
+
+    const before = await stockOf(foodTypeId);
+    const done = await staffPost(`/api/v1/distributions/${created.id}/complete`, {
+      receivedByName: 'Maria Santos',
+      items: [
+        { distributionItemId: foodItem.id, quantity: 4 },
+        { distributionItemId: hygieneItem.id, quantity: 3 },
+      ],
+    });
+    expect(done.status).toBe(200);
+    expect(parse(done, distributionResponseSchema).data.status).toBe(
+      DistributionStatus.DISTRIBUTED,
+    );
+    const after = await stockOf(foodTypeId);
+    expect(after.reserved).toBe(before.reserved - 5);
+    expect(after.available).toBe(before.available + 1);
+    const request = await prisma.assistanceRequest.findUniqueOrThrow({
+      where: { id: requestId },
+      select: { status: true },
+    });
+    expect(request.status).toBe(RequestStatus.DISTRIBUTED);
+  });
+
+  it('returns stock on no-show and cancels with mail', async () => {
+    const requestId = await approvedRequest();
+    const eventId = await makeEvent('DISTRIBUTION', `M4 Noshow ${RUN}`);
+    const created = parse(await allocate(requestId, eventId), distributionResponseSchema).data;
+    const before = await stockOf(foodTypeId);
+    const noShow = await staffPost(`/api/v1/distributions/${created.id}/no-show`, {});
+    expect(noShow.status).toBe(200);
+    const after = await stockOf(foodTypeId);
+    expect(after.available).toBe(before.available + 5);
+    expect(after.reserved).toBe(before.reserved - 5);
+
+    const requestId2 = await approvedRequest();
+    const created2 = parse(await allocate(requestId2, eventId), distributionResponseSchema).data;
+    const cancelled = await staffPost(`/api/v1/distributions/${created2.id}/cancel`, {});
+    expect(cancelled.status).toBe(200);
+    expect(parse(cancelled, distributionResponseSchema).data.status).toBe(
+      DistributionStatus.CANCELLED,
+    );
+    const mails = await prisma.emailNotification.count({
+      where: { type: 'DISTRIBUTION_CANCELLED', relatedRequestId: requestId2 },
+    });
+    expect(mails).toBe(1);
+  });
+
+  it('fans event cancellation out to every live distribution', async () => {
+    const eventId = await makeEvent('DISTRIBUTION', `M4 Fanout ${RUN}`);
+    const requestA = await approvedRequest();
+    const requestB = await approvedRequest();
+    expect((await allocate(requestA, eventId)).status).toBe(201);
+    expect((await allocate(requestB, eventId)).status).toBe(201);
+
+    const cancelled = await staffPost(`/api/v1/calendar/events/${eventId}/cancel`, {});
+    expect(cancelled.status).toBe(200);
+    for (const requestId of [requestA, requestB]) {
+      const row = await prisma.assistanceRequest.findUniqueOrThrow({
+        where: { id: requestId },
+        select: { status: true },
+      });
+      expect(row.status).toBe(RequestStatus.APPROVED);
+    }
+    const live = await prisma.distribution.count({
+      where: { calendarEventId: eventId, status: 'SCHEDULED' },
+    });
+    expect(live).toBe(0);
+  });
+
+  it('schedules donation collections and cancels from scheduled', async () => {
+    const email = `m4donor-${RUN}@example.com`;
+    await prisma.user.create({
+      data: {
+        name: 'M4 Donor',
+        email,
+        passwordHash: await hashPassword(PASSWORD),
+        role: UserRole.DONOR,
+        emailVerifiedAt: new Date(),
+      },
+    });
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .set('X-Forwarded-For', uniqueIp())
+      .send({ email, password: PASSWORD });
+    const token = parse(login, accessTokenResponseSchema).data.accessToken;
+    const sub = await request(app)
+      .post('/api/v1/donations')
+      .set('X-Forwarded-For', uniqueIp())
+      .set('Authorization', `Bearer ${token}`)
+      .send({ campaignId, items: [{ itemTypeId: hygieneTypeId, quantityDeclared: 5 }] });
+    expect(sub.status).toBe(201);
+    const donationId = parse(sub, donationResponseSchema).data.id;
+    expect((await staffPost(`/api/v1/donations/${donationId}/verify`, {})).status).toBe(200);
+
+    const collectionId = await makeEvent('COLLECTION', `M4 Pickup ${RUN}`);
+    const scheduled = await staffPost(`/api/v1/donations/${donationId}/schedule`, {
+      calendarEventId: collectionId,
+    });
+    expect(scheduled.status).toBe(200);
+    expect(parse(scheduled, donationResponseSchema).data.status).toBe('SCHEDULED');
+
+    const distributionId = await makeEvent('DISTRIBUTION', `M4 Wrong ${RUN}`);
+    const wrongType = await staffPost(`/api/v1/donations/${donationId}/schedule`, {
+      calendarEventId: distributionId,
+    });
+    expect(wrongType.status).toBe(409);
+
+    const cancelled = await staffPost(`/api/v1/donations/${donationId}/cancel`, {});
+    expect(cancelled.status).toBe(200);
+  });
+
+  it('settles concurrent last-unit reserves to exactly one winner', async () => {
+    const scarce = await prisma.itemType.create({
+      data: { name: `M4 Scarce ${RUN}`, category: 'HYGIENE', unit: 'kit' },
+      select: { id: true },
+    });
+    expect(
+      (
+        await staffPost('/api/v1/inventory/adjustments', {
+          itemTypeId: scarce.id,
+          campaignId,
+          direction: 'IN',
+          quantity: 3,
+          reason: 'M4 race stock.',
+        })
+      ).status,
+    ).toBe(200);
+    const eventId = await makeEvent('DISTRIBUTION', `M4 Race ${RUN}`);
+    const build = async (): Promise<request.Response> => {
+      const email = `race-${RUN}-${seq++}@example.com`;
+      const sub = await request(app)
+        .post('/api/v1/public/assistance-requests')
+        .set('X-Forwarded-For', uniqueIp())
+        .send({
+          fullName: 'M4 Racer',
+          email,
+          contactNumber: '09171234567',
+          barangay: 'San Isidro',
+          city: 'Quezon City',
+          province: 'Metro Manila',
+          campaignId,
+          items: [{ itemTypeId: scarce.id, quantity: 3 }],
+          consent: true,
+          turnstileToken: 'x',
+        });
+      const ref = parse(sub, submitRequestResponseSchema).data.referenceNumber;
+      const row = await prisma.assistanceRequest.findUniqueOrThrow({
+        where: { referenceNumber: ref },
+        select: { id: true },
+      });
+      await staffPost(`/api/v1/assistance-requests/${row.id}/claim`, {});
+      await staffPost(`/api/v1/assistance-requests/${row.id}/approve`, {});
+      return staffPost('/api/v1/distributions', {
+        requestId: row.id,
+        calendarEventId: eventId,
+        items: [{ itemTypeId: scarce.id, quantity: 3 }],
+      });
+    };
+    const [first, second] = await Promise.all([build(), build()]);
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([201, 409]);
+  });
+
+  it('enforces the staff boundary and reports an honest resync', async () => {
+    const donorForbidden = await request(app)
+      .get('/api/v1/distributions')
+      .set('X-Forwarded-For', uniqueIp())
+      .set('Authorization', `Bearer ${donor.token}`);
+    expect(donorForbidden.status).toBe(403);
+
+    const eventId = await makeEvent('DISTRIBUTION', `M4 Sync ${RUN}`);
+    const resync = await staffPost(`/api/v1/calendar/events/${eventId}/resync`, {});
+    expect(resync.status).toBe(200);
+    expect(parse(resync, calendarEventResponseSchema).data.syncStatus).toBe('NOT_SYNCED');
+
+    const listed = parse(
+      await staffGet('/api/v1/distributions'),
+      distributionListResponseSchema,
+    ).data;
+    expect(listed.total).toBeGreaterThanOrEqual(1);
+    const events = parse(
+      await staffGet('/api/v1/calendar/events'),
+      calendarEventListResponseSchema,
+    ).data;
+    expect(events.total).toBeGreaterThanOrEqual(1);
+  });
+});

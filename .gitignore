@@ -2,6 +2,7 @@
 node_modules/
 agapay_ui/
 docs/
+*opencode/
 # Build output
 dist/
 build/

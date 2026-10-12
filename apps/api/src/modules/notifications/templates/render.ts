@@ -46,6 +46,14 @@ function notImplemented(type: NotificationType): never {
   throw internal(`Email template for ${type} is not implemented yet.`);
 }
 
+function manilaDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
 export function renderEmail(
   type: NotificationType,
   templateData: unknown,
@@ -85,12 +93,66 @@ export function renderEmail(
           `If you did not ask for this, you can ignore this email.`,
       };
     }
+    case 'COLLECTION_SCHEDULED': {
+      const name = field(templateData, 'name');
+      const referenceNumber = field(templateData, 'referenceNumber');
+      const location = field(templateData, 'location');
+      const startAt = field(templateData, 'startAt');
+      return {
+        subject: 'Your donation collection is scheduled',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>Your donation ${escapeHtml(referenceNumber)} will be collected on ${escapeHtml(manilaDateTime(startAt))} at ${escapeHtml(location)}.</p>` +
+          `<p>Please have the goods packed and ready. Reply to this email if the schedule does not work for you.</p>`,
+        text:
+          `Hi ${name},\n\nYour donation ${referenceNumber} will be collected on ` +
+          `${manilaDateTime(startAt)} at ${location}.\n\n` +
+          `Please have the goods packed and ready. Reply to this email if the schedule does not work for you.`,
+      };
+    }
+    case 'DISTRIBUTION_SCHEDULED': {
+      const name = field(templateData, 'name');
+      const location = field(templateData, 'location');
+      const startAt = field(templateData, 'startAt');
+      return {
+        subject: 'Your goods are ready for pickup',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>Your goods are ready. Please come on ${escapeHtml(manilaDateTime(startAt))} at ${escapeHtml(location)}.</p>` +
+          `<p>Bring your tracking number and a valid ID.</p>`,
+        text:
+          `Hi ${name},\n\nYour goods are ready. Please come on ` +
+          `${manilaDateTime(startAt)} at ${location}.\n\n` +
+          `Bring your tracking number and a valid ID.`,
+      };
+    }
+    case 'DISTRIBUTION_COMPLETED': {
+      const name = field(templateData, 'name');
+      const trackingNumber = field(templateData, 'trackingNumber');
+      return {
+        subject: 'Your goods were released',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>Your goods for tracking number ${escapeHtml(trackingNumber)} were released. Thank you, and take care.</p>`,
+        text: `Hi ${name},\n\nYour goods for tracking number ${trackingNumber} were released. Thank you, and take care.`,
+      };
+    }
+    case 'DISTRIBUTION_CANCELLED': {
+      const name = field(templateData, 'name');
+      const location = field(templateData, 'location');
+      const startAt = field(templateData, 'startAt');
+      return {
+        subject: 'Your distribution schedule was cancelled',
+        html:
+          `<p>Hi ${escapeHtml(name)},</p>` +
+          `<p>The distribution scheduled on ${escapeHtml(manilaDateTime(startAt))} at ${escapeHtml(location)} was cancelled. We will email you a new schedule soon.</p>`,
+        text:
+          `Hi ${name},\n\nThe distribution scheduled on ` +
+          `${manilaDateTime(startAt)} at ${location} was cancelled. We will email you a new schedule soon.`,
+      };
+    }
     case 'COLLECTION_REMINDER':
-    case 'COLLECTION_SCHEDULED':
-    case 'DISTRIBUTION_CANCELLED':
-    case 'DISTRIBUTION_COMPLETED':
     case 'DISTRIBUTION_REMINDER':
-    case 'DISTRIBUTION_SCHEDULED':
     case 'DONATION_SUBMITTED': {
       const name = field(templateData, 'name');
       const referenceNumber = field(templateData, 'referenceNumber');

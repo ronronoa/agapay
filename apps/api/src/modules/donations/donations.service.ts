@@ -1,4 +1,6 @@
 import {
+  CalendarEventStatus,
+  CalendarEventType,
   DonationStatus,
   DONATION_TRANSITIONS,
   NotificationType,
@@ -11,6 +13,7 @@ import type {
   DonationDto,
   DonationListQuery,
   RejectDonationInput,
+  ScheduleDonationInput,
   SubmitDonationInput,
   UpdateDonationInput,
 } from '@agapay/shared';
@@ -346,7 +349,11 @@ export async function cancel(id: string, actor: AuthContext): Promise<DonationDt
   });
   if (existing === null) throw notFound('Donation');
   if (actor.role === 'DONOR' && existing.donorId !== actor.userId) throw notFound('Donation');
-  if (existing.status !== DonationStatus.PENDING && existing.status !== DonationStatus.VERIFIED) {
+  if (
+    existing.status !== DonationStatus.PENDING &&
+    existing.status !== DonationStatus.VERIFIED &&
+    existing.status !== DonationStatus.SCHEDULED
+  ) {
     throw invalidTransition(existing.status, DonationStatus.CANCELLED);
   }
 
@@ -403,6 +410,70 @@ export async function verify(id: string, actor: AuthContext, clock: Clock): Prom
         entityType: 'Donation',
         entityId: id,
         metadata: { from: existing.status },
+      });
+    }, txOptions),
+  );
+
+  return getDetail(id);
+}
+
+export async function schedule(
+  id: string,
+  input: ScheduleDonationInput,
+  actor: AuthContext,
+): Promise<DonationDto> {
+  const existing = await prisma.donation.findUnique({
+    where: { id },
+    select: { status: true },
+  });
+  if (existing === null) throw notFound('Donation');
+  if (!canTransition(existing.status, DonationStatus.SCHEDULED)) {
+    throw invalidTransition(existing.status, DonationStatus.SCHEDULED);
+  }
+  const event = await prisma.calendarEvent.findUnique({
+    where: { id: input.calendarEventId },
+    select: { id: true, type: true, status: true, location: true, startAt: true },
+  });
+  if (event === null) throw notFound('Calendar event');
+  if (
+    event.status !== CalendarEventStatus.SCHEDULED ||
+    event.type !== CalendarEventType.COLLECTION
+  ) {
+    throw businessRuleViolation('Donations need a scheduled collection event.');
+  }
+
+  await withRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const claimed = await tx.donation.updateMany({
+        where: { id, status: existing.status },
+        data: { status: DonationStatus.SCHEDULED, collectionEventId: event.id },
+      });
+      if (claimed.count === 0) throw invalidTransition(existing.status, DonationStatus.SCHEDULED);
+      const row = await tx.donation.findUniqueOrThrow({
+        where: { id },
+        select: { referenceNumber: true, donor: { select: { name: true, email: true } } },
+      });
+      await tx.emailNotification.create({
+        data: {
+          type: NotificationType.COLLECTION_SCHEDULED,
+          toEmail: row.donor.email,
+          subject: 'Your donation collection is scheduled',
+          templateData: {
+            name: row.donor.name,
+            referenceNumber: row.referenceNumber,
+            location: event.location,
+            startAt: event.startAt.toISOString(),
+          },
+          priority: 2,
+          relatedDonationId: id,
+          dedupeKey: `collection-scheduled:${id}`,
+        },
+      });
+      await writeAudit(tx, actor, {
+        action: 'donation.schedule',
+        entityType: 'Donation',
+        entityId: id,
+        metadata: { from: existing.status, eventId: input.calendarEventId },
       });
     }, txOptions),
   );

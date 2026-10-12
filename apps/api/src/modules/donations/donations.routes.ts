@@ -3,6 +3,7 @@ import {
   collectDonationSchema,
   donationListQuerySchema,
   rejectDonationSchema,
+  scheduleDonationSchema,
   submitDonationSchema,
   updateDonationSchema,
 } from '@agapay/shared';
@@ -65,6 +66,16 @@ donationsRouter.post('/:id/reject', requireRole('STAFF', 'ADMIN'), async (req, r
   res
     .status(200)
     .json({ data: await service.reject(pathParam(req, 'id'), parsed.data, actorFrom(req)) });
+});
+
+donationsRouter.post('/:id/schedule', requireRole('STAFF', 'ADMIN'), async (req, res) => {
+  const body: unknown = req.body;
+  const parsed = scheduleDonationSchema.safeParse(body);
+  if (!parsed.success) throw validationError(parsed.error.flatten());
+
+  res
+    .status(200)
+    .json({ data: await service.schedule(pathParam(req, 'id'), parsed.data, actorFrom(req)) });
 });
 
 donationsRouter.post('/:id/collect', requireRole('STAFF', 'ADMIN'), async (req, res) => {

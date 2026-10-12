@@ -10,7 +10,7 @@ import type {
 } from '@agapay/shared';
 import { prisma, txOptions } from '../../lib/prisma.js';
 import { withRetry } from '../../lib/retry.js';
-import { businessRuleViolation, forbidden, notFound } from '../../lib/errors.js';
+import { businessRuleViolation, forbidden, internal, notFound } from '../../lib/errors.js';
 import { write as writeAudit } from '../audit/audit.service.js';
 
 function prismaErrorCode(err: unknown): string | undefined {
@@ -96,7 +96,7 @@ async function requireItemTypeAndCampaign(
   if (campaign === null) throw notFound('Campaign');
 }
 
-async function ensureRow(
+export async function ensureRow(
   tx: Prisma.TransactionClient,
   itemTypeId: string,
   campaignId: string,
@@ -147,6 +147,100 @@ export async function addDonationStock(
       reservedAfter: updated.reserved,
       distributedAfter: updated.distributed,
       donationItemId: input.donationItemId,
+      createdById: input.actorId,
+    },
+  });
+}
+
+export interface StockMoveInput {
+  inventoryItemId: string;
+  quantity: number;
+  distributionItemId?: string | undefined;
+  actorId: string;
+}
+
+export async function reserveStock(
+  tx: Prisma.TransactionClient,
+  input: StockMoveInput,
+): Promise<void> {
+  if (input.quantity <= 0) throw businessRuleViolation('Reservation quantity must be positive.');
+  const claimed = await tx.inventoryItem.updateMany({
+    where: { id: input.inventoryItemId, available: { gte: input.quantity } },
+    data: { available: { decrement: input.quantity }, reserved: { increment: input.quantity } },
+  });
+  if (claimed.count === 0) throw businessRuleViolation('Not enough available stock to reserve.');
+  const after = await tx.inventoryItem.findUniqueOrThrow({
+    where: { id: input.inventoryItemId },
+    select: { available: true, reserved: true, distributed: true },
+  });
+  await tx.inventoryMovement.create({
+    data: {
+      inventoryItemId: input.inventoryItemId,
+      type: MovementType.RESERVE,
+      quantity: input.quantity,
+      availableAfter: after.available,
+      reservedAfter: after.reserved,
+      distributedAfter: after.distributed,
+      distributionItemId: input.distributionItemId ?? null,
+      createdById: input.actorId,
+    },
+  });
+}
+
+export async function releaseStock(
+  tx: Prisma.TransactionClient,
+  input: StockMoveInput,
+): Promise<void> {
+  if (input.quantity <= 0) throw businessRuleViolation('Release quantity must be positive.');
+  const claimed = await tx.inventoryItem.updateMany({
+    where: { id: input.inventoryItemId, reserved: { gte: input.quantity } },
+    data: { available: { increment: input.quantity }, reserved: { decrement: input.quantity } },
+  });
+  if (claimed.count === 0)
+    throw internal('Reserved stock went missing inside its own transaction.');
+  const after = await tx.inventoryItem.findUniqueOrThrow({
+    where: { id: input.inventoryItemId },
+    select: { available: true, reserved: true, distributed: true },
+  });
+  await tx.inventoryMovement.create({
+    data: {
+      inventoryItemId: input.inventoryItemId,
+      type: MovementType.RELEASE,
+      quantity: input.quantity,
+      availableAfter: after.available,
+      reservedAfter: after.reserved,
+      distributedAfter: after.distributed,
+      distributionItemId: input.distributionItemId ?? null,
+      createdById: input.actorId,
+    },
+  });
+}
+
+export async function distributeStock(
+  tx: Prisma.TransactionClient,
+  input: StockMoveInput,
+): Promise<void> {
+  if (input.quantity <= 0) throw businessRuleViolation('Distribution quantity must be positive.');
+  const claimed = await tx.inventoryItem.updateMany({
+    where: { id: input.inventoryItemId, reserved: { gte: input.quantity } },
+    data: { reserved: { decrement: input.quantity }, distributed: { increment: input.quantity } },
+  });
+  if (claimed.count === 0) {
+    throw internal('Reserved stock went missing inside its own transaction.');
+  }
+  const after = await tx.inventoryItem.findUniqueOrThrow({
+    where: { id: input.inventoryItemId },
+    select: { available: true, reserved: true, distributed: true },
+  });
+  await tx.inventoryMovement.create({
+    data: {
+      inventoryItemId: input.inventoryItemId,
+      type: MovementType.DISTRIBUTE,
+      quantity: input.quantity,
+      availableAfter: after.available,
+      reservedAfter: after.reserved,
+      distributedAfter: after.distributed,
+      distributionItemId: input.distributionItemId ?? null,
       createdById: input.actorId,
     },
   });

@@ -3,8 +3,8 @@ import { DonationStatus } from './enums.js';
 
 export const DONATION_TRANSITIONS = {
   PENDING: [DonationStatus.VERIFIED, DonationStatus.REJECTED, DonationStatus.CANCELLED],
-  VERIFIED: [DonationStatus.COLLECTED, DonationStatus.CANCELLED],
-  SCHEDULED: [DonationStatus.CANCELLED],
+  VERIFIED: [DonationStatus.SCHEDULED, DonationStatus.COLLECTED, DonationStatus.CANCELLED],
+  SCHEDULED: [DonationStatus.COLLECTED, DonationStatus.CANCELLED],
   COLLECTED: [DonationStatus.COMPLETED],
   REJECTED: [],
   CANCELLED: [],

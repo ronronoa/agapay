@@ -18,6 +18,8 @@ import { donationsRouter } from './modules/donations/donations.routes.js';
 import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 import { requestsRouter } from './modules/requests/requests.routes.js';
 import { publicRouter } from './modules/public/public.routes.js';
+import { calendarRouter } from './modules/calendar/calendar.routes.js';
+import { distributionsRouter } from './modules/distributions/distributions.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { notificationsRouter } from './modules/notifications/notification.routes.js';
 
@@ -89,6 +91,8 @@ export function createApp() {
   app.use('/api/v1/inventory', inventoryRouter);
   app.use('/api/v1/assistance-requests', requestsRouter);
   app.use('/api/v1/public', publicRouter);
+  app.use('/api/v1/calendar', calendarRouter);
+  app.use('/api/v1/distributions', distributionsRouter);
   app.use('/api/v1/notifications/emails', notificationsRouter);
   app.use('/api/v1', healthRouter);
 
