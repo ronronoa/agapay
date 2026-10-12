@@ -75,7 +75,7 @@ export function AppShell() {
                   Request Assistance
                 </NavLink>
                 <NavLink
-                  to="/donate"
+                  to="/campaigns"
                   className="inline-flex items-center justify-center rounded-md bg-accent px-4 py-2 text-sm font-medium text-text hover:bg-accent-hover"
                 >
                   Donate

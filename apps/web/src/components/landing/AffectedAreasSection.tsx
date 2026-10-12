@@ -1,41 +1,37 @@
-const AREAS = [
-  {
-    location: 'St. Bernard, Southern Leyte',
-    date: 'February 17, 2006',
-    event: 'Guinsaugon Landslide',
-  },
-  {
-    location: 'Malabon City, Metro Manila',
-    date: 'July 19, 2026',
-    event: 'Flood, at Tinajeros Malabon',
-  },
-  {
-    location: 'Camalig City, Bicol Philippines',
-    date: 'May 15, 2026',
-    event: 'Ashfall, at Camalig City',
-  },
-] as const;
+import { Link } from 'react-router-dom';
+import { publicCampaignListResponseSchema } from '@agapay/shared';
+import { useApiQuery } from '../../lib/use-api-query';
+import { AsyncBoundary } from '../ui/AsyncBoundary';
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-PH', { dateStyle: 'medium' });
+}
 
 export function AffectedAreasSection() {
+  const query = useApiQuery(
+    ['public-campaigns', 'landing'],
+    '/api/v1/public/campaigns?pageSize=6',
+    publicCampaignListResponseSchema,
+  );
+
   return (
     <section id="impact" aria-labelledby="areas-heading" className="w-full bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl text-center">
           <h2
             id="areas-heading"
-            className="text-2xl font-bold tracking-tight text-[#183327] sm:text-3xl"
+            className="font-display text-2xl font-semibold tracking-tight text-text sm:text-3xl"
           >
             Affected areas of the Philippines
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-[#625f5f] sm:text-lg">
-            These places are currently affected and need relief support across their barangays.
+          <p className="mt-4 text-base leading-relaxed text-text-muted sm:text-lg">
+            These relief drives are currently active and accepting requests across their barangays.
           </p>
         </div>
 
         <div className="mt-12 grid grid-cols-1 items-start gap-10 lg:grid-cols-2 lg:gap-16">
-          {/* Left: arch-masked relief photo */}
           <div className="flex justify-center">
-            <div className="w-full max-w-md overflow-hidden rounded-t-[180px] rounded-b-[40px] shadow-xl sm:max-w-lg sm:rounded-t-[240px]">
+            <div className="w-full max-w-md overflow-hidden rounded-b-[40px] rounded-t-[180px] shadow-xl sm:max-w-lg sm:rounded-t-[240px]">
               <img
                 src="/images/relief-distribution.png"
                 alt="Relief volunteers distributing meals and supplies to affected communities"
@@ -45,21 +41,50 @@ export function AffectedAreasSection() {
             </div>
           </div>
 
-          {/* Right: stacked area cards */}
-          <div className="flex flex-col gap-4">
-            {AREAS.map((area) => (
-              <article
-                key={area.location}
-                className="rounded-xl border border-[#bac9c9] bg-white px-6 py-5 shadow-sm"
-              >
-                <h3 className="text-base font-bold text-[#183327]">{area.location}</h3>
-                <div className="mt-2 border-t border-[#bac9c9] pt-2">
-                  <p className="text-sm text-[#625f5f]">{area.date}</p>
-                  <p className="text-sm text-[#625f5f]">{area.event}</p>
-                </div>
-              </article>
-            ))}
-          </div>
+          <AsyncBoundary
+            data={query.data?.data.items ?? null}
+            error={query.error}
+            isPending={query.isPending}
+            onRetry={query.refetch}
+            loadingLabel="Loading relief drives…"
+            isEmpty={(items) => items.length === 0}
+            emptyTitle="No active drives right now"
+            emptyDescription="There are no relief drives accepting requests at the moment. Please check back later."
+          >
+            {(items) => (
+              <div className="flex flex-col gap-4">
+                {items.map((campaign) => (
+                  <article
+                    key={campaign.id}
+                    className="rounded-xl border border-border bg-white px-6 py-5 shadow-sm"
+                  >
+                    <h3 className="font-display text-base font-semibold text-text">
+                      {campaign.name}
+                    </h3>
+                    <div className="mt-2 border-t border-border pt-2">
+                      <p className="text-sm text-text-muted">
+                        {formatDate(campaign.startDate)} to{' '}
+                        {campaign.endDate === null ? 'ongoing' : formatDate(campaign.endDate)}
+                      </p>
+                      <p className="text-sm text-text-muted">
+                        {campaign.areas.length === 0
+                          ? 'Open to all areas'
+                          : campaign.areas
+                              .map((area) => `${area.barangay}, ${area.city}`)
+                              .join(' · ')}
+                      </p>
+                    </div>
+                    <Link
+                      to={`/campaigns/${campaign.slug}`}
+                      className="mt-3 inline-block text-sm font-medium text-primary underline underline-offset-4"
+                    >
+                      View this drive
+                    </Link>
+                  </article>
+                ))}
+              </div>
+            )}
+          </AsyncBoundary>
         </div>
       </div>
     </section>

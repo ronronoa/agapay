@@ -10,6 +10,11 @@ import { HomePage } from '../pages/HomePage';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { NotImplementedPage } from '../pages/NotImplementedPage';
+import { PublicCampaignDetailPage } from '../pages/public/PublicCampaignDetailPage';
+import { PublicCampaignsPage } from '../pages/public/PublicCampaignsPage';
+import { RequestAssistancePage } from '../pages/public/RequestAssistancePage';
+import { TrackAssistancePage } from '../pages/public/TrackAssistancePage';
+import { VerifyRequestPage } from '../pages/public/VerifyRequestPage';
 
 const ADMIN_ROLES = ['ADMIN', 'STAFF'] as const;
 
@@ -20,6 +25,11 @@ const router = createBrowserRouter([
   // so it lives outside the AppShell.
   { path: '/', element: <HomePage /> },
 
+  // The beneficiary form follows its approved standalone design (landing
+  // header plus split brand/form layout), so it lives outside the AppShell
+  // like the landing page does.
+  { path: 'request-assistance', element: <RequestAssistancePage /> },
+
   {
     path: '/',
     element: <AppShell />,
@@ -27,10 +37,10 @@ const router = createBrowserRouter([
       // Public
       { path: 'about', element: <NotImplementedPage title="About" /> },
       { path: 'how-it-works', element: <NotImplementedPage title="How It Works" /> },
-      { path: 'campaigns', element: <NotImplementedPage title="Campaigns" /> },
-      { path: 'campaigns/:slug', element: <NotImplementedPage title="Campaign" /> },
-      { path: 'request-assistance', element: <NotImplementedPage title="Request Assistance" /> },
-      { path: 'track', element: <NotImplementedPage title="Track Assistance" /> },
+      { path: 'campaigns', element: <PublicCampaignsPage /> },
+      { path: 'campaigns/:slug', element: <PublicCampaignDetailPage /> },
+      { path: 'track', element: <TrackAssistancePage /> },
+      { path: 'verify-request', element: <VerifyRequestPage /> },
       {
         path: 'login',
         element: (

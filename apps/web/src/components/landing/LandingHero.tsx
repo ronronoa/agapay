@@ -7,24 +7,24 @@ export function LandingHero() {
         <div className="space-y-6 lg:col-span-7 lg:pr-8">
           <h1
             id="hero-heading"
-            className="text-4xl font-extrabold tracking-tight text-[#183327] sm:text-5xl lg:text-6xl"
+            className="font-display text-4xl font-bold tracking-tight text-text sm:text-5xl lg:text-6xl"
           >
             Connecting donors with communities hit by calamity
           </h1>
-          <p className="max-w-2xl text-lg leading-relaxed text-[#625f5f] sm:text-xl">
+          <p className="max-w-2xl text-lg leading-relaxed text-text-muted sm:text-xl">
             Agapay manages the full relief process: from collecting donated goods, through inventory
             and scheduling, to getting supplies into the hands of families who need them.
           </p>
           <div className="flex flex-wrap items-center gap-4 pt-2">
             <Link
               to="/request-assistance"
-              className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-[#476b68] px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-[#355353] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#476b68]"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-pine px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-pine-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine"
             >
               Request Aid Now
             </Link>
             <Link
-              to="/donate"
-              className="inline-flex min-h-[48px] items-center justify-center rounded-xl border-2 border-[#476b68] bg-transparent px-7 py-3 text-base font-semibold text-[#476b68] transition hover:bg-[#476b68]/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#476b68]"
+              to="/campaigns"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-xl border-2 border-pine bg-transparent px-7 py-3 text-base font-semibold text-pine transition hover:bg-pine/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine"
             >
               Donate Goods
             </Link>

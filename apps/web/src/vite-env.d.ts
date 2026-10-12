@@ -5,7 +5,8 @@
 interface ImportMetaEnv {
   /** Empty means same-origin, which is what the dev proxy and prod provide. */
   readonly VITE_API_BASE_URL?: string;
-  // TODO(M3): public site key for the Turnstile widget.
+  // Public site key for the Turnstile widget. Unset means keyless dev: the
+  // widget renders nothing and the form submits a dev-bypass token.
   readonly VITE_TURNSTILE_SITE_KEY?: string;
 }
 

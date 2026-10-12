@@ -45,13 +45,13 @@ function RadarIcon({ className }: { className?: string }) {
 const HIGHLIGHTS = [
   {
     icon: ShieldCheckIcon,
-    title: 'Verified Needs',
-    body: 'Every relief request is geo-located and verified by onsite local leaders before going live.',
+    title: 'Reviewed Requests',
+    body: 'Staff review every assistance request before approval, and every donation is verified before it enters inventory.',
   },
   {
     icon: RadarIcon,
-    title: 'Real-Time Tracking',
-    body: 'Track exactly where your relief packets are from local assembly points straight to the families.',
+    title: 'Trackable Status',
+    body: 'Beneficiaries follow their request with a tracking number and email, from submission through scheduled pickup.',
   },
 ] as const;
 
@@ -66,12 +66,12 @@ export function MissionSection() {
         <div className="mx-auto max-w-3xl">
           <h2
             id="mission-heading"
-            className="text-3xl font-extrabold tracking-tight text-[#183327] sm:text-4xl"
+            className="font-display text-3xl font-semibold tracking-tight text-text sm:text-4xl"
           >
             Connecting those who can help with those who need it most.
           </h2>
 
-          <div className="mt-8 space-y-4 text-base leading-relaxed text-[#625f5f] sm:text-lg">
+          <div className="mt-8 space-y-4 text-base leading-relaxed text-text-muted sm:text-lg">
             <p>
               Agapay was born out of a critical need for rapid, organized, and transparent disaster
               response in the Philippines. Lying directly in the path of the Pacific monsoon belt,
@@ -90,11 +90,13 @@ export function MissionSection() {
             {HIGHLIGHTS.map((item) => (
               <article
                 key={item.title}
-                className="rounded-xl border border-[#bac9c9] bg-white p-6 shadow-sm"
+                className="rounded-xl border border-border bg-white p-6 shadow-sm"
               >
-                <item.icon className="h-8 w-8 text-[#476b68]" />
-                <h3 className="mt-4 text-base font-bold text-[#183327]">{item.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-[#625f5f]">{item.body}</p>
+                <item.icon className="h-8 w-8 text-pine" />
+                <h3 className="mt-4 font-display text-base font-semibold text-text">
+                  {item.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-text-muted">{item.body}</p>
               </article>
             ))}
           </div>

@@ -8,11 +8,11 @@ export function LandingHeader() {
   const isStaff = user !== null && (user.role === 'ADMIN' || user.role === 'STAFF');
 
   return (
-    <header className="w-full bg-[#355353] text-white">
+    <header className="w-full bg-pine-dark text-white">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="text-xl font-bold tracking-tight text-white hover:text-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="font-display text-xl font-semibold tracking-tight text-white hover:text-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           Agapay
         </Link>
@@ -57,7 +57,7 @@ export function LandingHeader() {
               </Link>
               <Link
                 to="/register"
-                className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#355353] shadow-sm transition hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-white px-5 py-2 text-sm font-semibold text-pine-dark shadow-sm transition hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Sign Up
               </Link>

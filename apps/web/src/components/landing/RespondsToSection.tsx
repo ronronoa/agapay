@@ -20,13 +20,13 @@ export function RespondsToSection() {
         <div className="mx-auto max-w-3xl text-center">
           <h2
             id="responds-heading"
-            className="text-2xl font-bold tracking-tight text-[#183327] sm:text-3xl"
+            className="font-display text-2xl font-semibold tracking-tight text-text sm:text-3xl"
           >
             What Agapay responds to
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-[#625f5f] sm:text-lg">
+          <p className="mt-4 text-base leading-relaxed text-text-muted sm:text-lg">
             The Philippines sits on the Pacific Ring of Fire and in the direct path of the monsoon
-            belt; most relief requests fall into three categories.
+            belt. When calamity hits, this is the spirit we bring.
           </p>
         </div>
 
@@ -34,10 +34,10 @@ export function RespondsToSection() {
           {CARDS.map((card, index) => (
             <article
               key={index}
-              className="rounded-2xl border border-[#bac9c9] bg-white p-6 shadow-sm transition hover:shadow-md sm:p-8"
+              className="rounded-2xl border border-border bg-white p-6 shadow-sm transition hover:shadow-md sm:p-8"
             >
-              <h3 className="text-lg font-bold text-[#183327]">{card.title}</h3>
-              <p className="mt-3 text-sm leading-relaxed text-[#625f5f]">{card.body}</p>
+              <h3 className="font-display text-lg font-semibold text-text">{card.title}</h3>
+              <p className="mt-3 text-sm leading-relaxed text-text-muted">{card.body}</p>
             </article>
           ))}
         </div>

@@ -40,6 +40,8 @@ export const submitRequestResponseSchema = z.object({
   }),
 });
 
+export type SubmitRequestResponse = z.infer<typeof submitRequestResponseSchema>;
+
 export const verifyRequestEmailSchema = z
   .object({
     token: z.string().min(20).max(500),
@@ -51,6 +53,8 @@ export type VerifyRequestEmailInput = z.infer<typeof verifyRequestEmailSchema>;
 export const verifyRequestEmailResponseSchema = z.object({
   data: z.object({ verified: z.boolean() }),
 });
+
+export type VerifyRequestEmailResponse = z.infer<typeof verifyRequestEmailResponseSchema>;
 
 export const trackRequestSchema = z
   .object({
