@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Skeleton } from './skeleton';
 
 export interface AsyncBoundaryProps<T> {
   data: T | null;
@@ -31,9 +32,10 @@ export function AsyncBoundary<T>({
 }: AsyncBoundaryProps<T>) {
   if (isPending) {
     return (
-      <p role="status" className="text-sm text-text-muted">
-        {loadingLabel}
-      </p>
+      <div role="status">
+        <Skeleton className="h-4 w-40" />
+        <p className="mt-2 text-sm text-text-muted">{loadingLabel}</p>
+      </div>
     );
   }
 

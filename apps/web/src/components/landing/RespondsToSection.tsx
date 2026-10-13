@@ -1,3 +1,5 @@
+import { Reveal } from '../ui/reveal';
+
 const CARDS = [
   {
     title: 'Our Spirit of Kapit-Bisig',
@@ -30,7 +32,7 @@ export function RespondsToSection() {
           </p>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <Reveal className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {CARDS.map((card, index) => (
             <article
               key={index}
@@ -40,7 +42,7 @@ export function RespondsToSection() {
               <p className="mt-3 text-sm leading-relaxed text-text-muted">{card.body}</p>
             </article>
           ))}
-        </div>
+        </Reveal>
       </div>
     </section>
   );

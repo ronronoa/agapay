@@ -15,6 +15,9 @@ const apiTarget =
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { '@': resolve(import.meta.dirname, 'src') },
+  },
   server: {
     port: 5173,
     // Proxying keeps the API same-origin in dev so the refresh cookie stays

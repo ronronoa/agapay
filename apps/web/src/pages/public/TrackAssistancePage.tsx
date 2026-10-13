@@ -7,6 +7,8 @@ import { ApiClientError } from '../../lib/api-client';
 import { trackAssistanceRequest } from '../../lib/public-api';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { Field } from '../../components/ui/field';
+import { Input } from '../../components/ui/input';
 
 type TrackResult = Awaited<ReturnType<typeof trackAssistanceRequest>>;
 
@@ -14,18 +16,14 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-const inputClass = 'w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm';
-
 export function TrackAssistancePage() {
   const [result, setResult] = useState<TrackResult | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<TrackRequestInput>({ resolver: zodResolver(trackRequestSchema) });
+  const { control, handleSubmit } = useForm<TrackRequestInput>({
+    resolver: zodResolver(trackRequestSchema),
+  });
 
   function onSubmit(values: TrackRequestInput): void {
     setLookingUp(true);
@@ -62,43 +60,36 @@ export function TrackAssistancePage() {
         noValidate
         className="space-y-4 rounded-lg border border-border bg-surface p-5 shadow-card"
       >
-        <div>
-          <label htmlFor="code" className="block text-sm font-medium">
-            Tracking or reference code
-          </label>
-          <input
-            id="code"
-            type="text"
-            autoComplete="off"
-            placeholder="TRK-XXXX-XXXX or REQ-2026-000000"
-            {...register('code')}
-            className={`mt-1 ${inputClass}`}
-          />
-          {errors.code === undefined ? null : (
-            <p role="alert" className="mt-1 text-sm text-text-muted">
-              {errors.code.message}
-            </p>
+        <Field control={control} name="code" label="Tracking or reference code">
+          {(field) => (
+            <Input
+              id={field.id}
+              autoComplete="off"
+              placeholder="TRK-XXXX-XXXX or REQ-2026-000000"
+              value={typeof field.value === 'string' ? field.value : ''}
+              onChange={(event) => field.onChange(event.target.value)}
+              onBlur={field.onBlur}
+              aria-invalid={field.invalid}
+              aria-describedby={field.describedBy}
+            />
           )}
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium">
-            Email address
-          </label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            placeholder="name@example.com"
-            {...register('email')}
-            className={`mt-1 ${inputClass}`}
-          />
-          {errors.email === undefined ? null : (
-            <p role="alert" className="mt-1 text-sm text-text-muted">
-              {errors.email.message}
-            </p>
+        <Field control={control} name="email" label="Email address">
+          {(field) => (
+            <Input
+              id={field.id}
+              type="email"
+              autoComplete="email"
+              placeholder="name@example.com"
+              value={typeof field.value === 'string' ? field.value : ''}
+              onChange={(event) => field.onChange(event.target.value)}
+              onBlur={field.onBlur}
+              aria-invalid={field.invalid}
+              aria-describedby={field.describedBy}
+            />
           )}
-        </div>
+        </Field>
 
         {lookupError === null ? null : (
           <p role="alert" className="text-sm font-medium">

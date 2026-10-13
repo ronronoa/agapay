@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom';
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { getUser, subscribe } from '../../lib/session';
 import { logout } from '../../lib/auth-api';
+import { Dialog, DialogClose, DialogTitle } from '../ui/dialog';
 
 export function LandingHeader() {
   const user = useSyncExternalStore(subscribe, getUser, getUser);
   const isStaff = user !== null && (user.role === 'ADMIN' || user.role === 'STAFF');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <header className="w-full bg-pine-dark text-white">
@@ -47,6 +49,26 @@ export function LandingHeader() {
         </nav>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open menu"
+            aria-expanded={menuOpen}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white md:hidden"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              className="h-6 w-6"
+              aria-hidden="true"
+            >
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
           {user === null ? (
             <>
               <Link
@@ -76,6 +98,30 @@ export function LandingHeader() {
           )}
         </div>
       </div>
+
+      <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
+        <DialogTitle className="sr-only">Menu</DialogTitle>
+        <nav aria-label="Mobile" className="flex flex-col gap-1">
+          {(
+            [
+              { to: '/', label: 'Home' },
+              { to: '/campaigns', label: 'Campaigns' },
+              { to: '/request-assistance', label: 'Request Assistance' },
+              { to: '/track', label: 'Track Assistance' },
+              { to: '/register', label: 'Sign Up' },
+            ] as const
+          ).map((item) => (
+            <DialogClose key={item.to + item.label} asChild>
+              <Link
+                to={item.to}
+                className="inline-flex min-h-[44px] items-center rounded-md px-3 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                {item.label}
+              </Link>
+            </DialogClose>
+          ))}
+        </nav>
+      </Dialog>
     </header>
   );
 }

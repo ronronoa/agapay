@@ -1,3 +1,5 @@
+import { Reveal } from '../ui/reveal';
+
 function ShieldCheckIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -86,7 +88,7 @@ export function MissionSection() {
             </p>
           </div>
 
-          <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <Reveal className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
             {HIGHLIGHTS.map((item) => (
               <article
                 key={item.title}
@@ -99,7 +101,7 @@ export function MissionSection() {
                 <p className="mt-2 text-sm leading-relaxed text-text-muted">{item.body}</p>
               </article>
             ))}
-          </div>
+          </Reveal>
         </div>
       </div>
     </section>

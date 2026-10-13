@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   publicCampaignListResponseSchema,
   publicItemTypeListResponseSchema,
@@ -15,8 +16,10 @@ import { useApiQuery } from '../../lib/use-api-query';
 import { LandingHeader } from '../../components/landing/LandingHeader';
 import { LandingFooter } from '../../components/landing/LandingFooter';
 import { TurnstileWidget, TURNSTILE_SITE_KEY } from '../../components/TurnstileWidget';
+import { Field } from '../../components/ui/field';
+import { Input } from '../../components/ui/input';
 
-const inputClass = 'w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm';
+const inputClass = 'w-full rounded-md border border-input bg-surface px-3 py-2 text-sm';
 
 function FieldError({ message }: { message: string | undefined }) {
   if (message === undefined) return null;
@@ -31,6 +34,30 @@ interface Pick {
   checked: boolean;
   quantity: number;
   customName: string;
+}
+
+const CATEGORY_ORDER = [
+  'FOOD',
+  'WATER',
+  'CLOTHING',
+  'HYGIENE',
+  'BEDDING',
+  'SCHOOL',
+  'OTHER',
+] as const;
+
+const CATEGORY_LABELS: Record<string, string> = {
+  FOOD: 'Food',
+  WATER: 'Water',
+  CLOTHING: 'Clothing',
+  HYGIENE: 'Hygiene',
+  BEDDING: 'Bedding',
+  SCHOOL: 'School',
+  OTHER: 'Other',
+};
+
+function categoryLabel(category: string): string {
+  return CATEGORY_LABELS[category] ?? category;
 }
 
 function capHint(item: PublicItemTypeDto, household: number | undefined): string | null {
@@ -67,6 +94,7 @@ export function RequestAssistancePage() {
 
   const {
     register,
+    control,
     handleSubmit,
     setValue,
     watch,
@@ -177,360 +205,431 @@ export function RequestAssistancePage() {
             Create an account to start your impactful journey. Choose your role and get started in
             minutes.
           </p>
-          <img
-            src="/images/hero-child.png"
-            alt="Children saying grace before a relief meal"
-            className="mt-6 w-full rounded-lg object-cover"
-          />
+          <div className="mt-6 aspect-[4/3] w-full overflow-hidden rounded-lg">
+            <img
+              src="/images/hero-child.png"
+              alt="Children saying grace before a relief meal"
+              className="h-full w-full object-cover"
+            />
+          </div>
         </section>
 
         <section
           aria-label="Assistance request form"
           className="rounded-xl border border-border bg-surface p-8 shadow-card"
         >
-          {success === null ? (
-            <form onSubmit={(event) => void handleSubmit(onSubmit)(event)} noValidate>
-              <h2 className="font-display text-2xl font-bold tracking-tight">
-                Register to request assistance
-              </h2>
-              <p className="mt-1 text-sm text-text-muted">
-                Register to request relief assistance and track the status of your requests.
-              </p>
-
-              <div
-                role="group"
-                aria-label="Choose a role"
-                className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-border p-1"
+          <AnimatePresence mode="wait" initial={false}>
+            {success === null ? (
+              <motion.form
+                key="request-form"
+                onSubmit={(event) => void handleSubmit(onSubmit)(event)}
+                noValidate
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
               >
-                <Link
-                  to="/register"
-                  className="inline-flex min-h-[44px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                <h2 className="font-display text-2xl font-bold tracking-tight">
+                  Register to request assistance
+                </h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  Register to request relief assistance and track the status of your requests.
+                </p>
+
+                <div
+                  role="group"
+                  aria-label="Choose a role"
+                  className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-border p-1"
                 >
-                  Donor
-                </Link>
-                <span
-                  aria-current="true"
-                  className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-surface px-4 py-2 text-sm font-semibold shadow-sm"
-                >
-                  Beneficiary
-                </span>
-              </div>
-
-              <div className="mt-4">
-                <label htmlFor="campaignId" className="block text-sm font-medium">
-                  Relief campaign
-                </label>
-                <select
-                  id="campaignId"
-                  {...register('campaignId')}
-                  className={`mt-1 ${inputClass}`}
-                >
-                  <option value="">Choose a campaign…</option>
-                  {campaigns.map((campaign) => (
-                    <option key={campaign.id} value={campaign.id}>
-                      {campaign.name}
-                    </option>
-                  ))}
-                </select>
-                <FieldError message={errors.campaignId?.message} />
-              </div>
-
-              <div className="mt-4">
-                <label htmlFor="fullName" className="block text-sm font-medium">
-                  Full Name
-                </label>
-                <input
-                  id="fullName"
-                  type="text"
-                  autoComplete="name"
-                  placeholder="Bernadette Lalata"
-                  {...register('fullName')}
-                  className={`mt-1 ${inputClass}`}
-                />
-                <FieldError message={errors.fullName?.message} />
-              </div>
-
-              <div className="mt-4">
-                <label htmlFor="email" className="block text-sm font-medium">
-                  Email Address
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="name@example.com"
-                  {...register('email')}
-                  className={`mt-1 ${inputClass}`}
-                />
-                <FieldError message={errors.email?.message} />
-              </div>
-
-              <div className="mt-4">
-                <label htmlFor="contactNumber" className="block text-sm font-medium">
-                  Contact Number
-                </label>
-                <div className="mt-1 flex">
-                  <span
-                    aria-hidden="true"
-                    className="inline-flex items-center rounded-l-md border border-r-0 border-border-strong bg-surface-alt px-3 text-sm text-text-muted"
+                  <Link
+                    to="/register"
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    +63
+                    Donor
+                  </Link>
+                  <span
+                    aria-current="true"
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-surface px-4 py-2 text-sm font-semibold shadow-sm"
+                  >
+                    Beneficiary
                   </span>
-                  <input
-                    id="contactNumber"
-                    type="tel"
-                    inputMode="numeric"
-                    autoComplete="tel"
-                    placeholder="9171234567"
-                    value={phoneDigits}
-                    onChange={(event) => onPhoneChange(event.target.value)}
-                    className="w-full rounded-r-md border border-border-strong bg-surface px-3 py-2 text-sm"
-                  />
                 </div>
-                <FieldError message={errors.contactNumber?.message} />
-              </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="barangay" className="block text-sm font-medium">
-                    Barangay
+                <Field control={control} name="campaignId" label="Relief campaign" className="mt-4">
+                  {(field) => (
+                    <select
+                      id={field.id}
+                      value={typeof field.value === 'string' ? field.value : ''}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      aria-invalid={field.invalid}
+                      aria-describedby={field.describedBy}
+                      className={inputClass}
+                    >
+                      <option value="">Choose a campaign…</option>
+                      {campaigns.map((campaign) => (
+                        <option key={campaign.id} value={campaign.id}>
+                          {campaign.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+
+                <Field control={control} name="fullName" label="Full Name" className="mt-4">
+                  {(field) => (
+                    <Input
+                      id={field.id}
+                      autoComplete="name"
+                      placeholder="Bernadette Lalata"
+                      value={typeof field.value === 'string' ? field.value : ''}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      aria-invalid={field.invalid}
+                      aria-describedby={field.describedBy}
+                    />
+                  )}
+                </Field>
+
+                <Field control={control} name="email" label="Email Address" className="mt-4">
+                  {(field) => (
+                    <Input
+                      id={field.id}
+                      type="email"
+                      autoComplete="email"
+                      placeholder="name@example.com"
+                      value={typeof field.value === 'string' ? field.value : ''}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      aria-invalid={field.invalid}
+                      aria-describedby={field.describedBy}
+                    />
+                  )}
+                </Field>
+
+                <div className="mt-4">
+                  <label htmlFor="contactNumber" className="block text-sm font-medium">
+                    Contact Number
                   </label>
-                  <input
-                    id="barangay"
-                    type="text"
-                    autoComplete="address-level3"
-                    {...register('barangay')}
-                    className={`mt-1 ${inputClass}`}
-                  />
-                  <FieldError message={errors.barangay?.message} />
+                  <div className="mt-1 flex">
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex items-center rounded-l-md border border-r-0 border-input bg-surface-alt px-3 text-sm text-text-muted"
+                    >
+                      +63
+                    </span>
+                    <input
+                      id="contactNumber"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      placeholder="9171234567"
+                      value={phoneDigits}
+                      onChange={(event) => onPhoneChange(event.target.value)}
+                      className="w-full rounded-r-md border border-input bg-surface px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <FieldError message={errors.contactNumber?.message} />
                 </div>
-                <div>
-                  <label htmlFor="city" className="block text-sm font-medium">
-                    City
-                  </label>
-                  <input
-                    id="city"
-                    type="text"
-                    autoComplete="address-level2"
-                    {...register('city')}
-                    className={`mt-1 ${inputClass}`}
-                  />
-                  <FieldError message={errors.city?.message} />
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <Field control={control} name="barangay" label="Barangay">
+                    {(field) => (
+                      <Input
+                        id={field.id}
+                        autoComplete="address-level3"
+                        value={typeof field.value === 'string' ? field.value : ''}
+                        onChange={(event) => field.onChange(event.target.value)}
+                        onBlur={field.onBlur}
+                        aria-invalid={field.invalid}
+                        aria-describedby={field.describedBy}
+                      />
+                    )}
+                  </Field>
+                  <Field control={control} name="city" label="City">
+                    {(field) => (
+                      <Input
+                        id={field.id}
+                        autoComplete="address-level2"
+                        value={typeof field.value === 'string' ? field.value : ''}
+                        onChange={(event) => field.onChange(event.target.value)}
+                        onBlur={field.onBlur}
+                        aria-invalid={field.invalid}
+                        aria-describedby={field.describedBy}
+                      />
+                    )}
+                  </Field>
                 </div>
-              </div>
 
-              <div className="mt-4">
-                <label htmlFor="province" className="block text-sm font-medium">
-                  Province
-                </label>
-                <input
-                  id="province"
-                  type="text"
-                  autoComplete="address-level1"
-                  {...register('province')}
-                  className={`mt-1 ${inputClass}`}
-                />
-                <FieldError message={errors.province?.message} />
-              </div>
+                <Field control={control} name="province" label="Province" className="mt-4">
+                  {(field) => (
+                    <Input
+                      id={field.id}
+                      autoComplete="address-level1"
+                      value={typeof field.value === 'string' ? field.value : ''}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      aria-invalid={field.invalid}
+                      aria-describedby={field.describedBy}
+                    />
+                  )}
+                </Field>
 
-              <div className="mt-4">
-                <label htmlFor="householdSize" className="block text-sm font-medium">
-                  Household size <span className="font-normal text-text-muted">(optional)</span>
-                </label>
-                <input
-                  id="householdSize"
-                  type="number"
-                  min={1}
-                  max={30}
-                  {...register('householdSize', {
-                    setValueAs: (value: unknown): number | undefined =>
-                      value === '' ? undefined : Number(value),
-                  })}
-                  className={`mt-1 ${inputClass}`}
-                />
-                <FieldError message={errors.householdSize?.message} />
-              </div>
+                <Field
+                  control={control}
+                  name="householdSize"
+                  label="Household size"
+                  hint="Optional"
+                  className="mt-4"
+                >
+                  {(field) => (
+                    <Input
+                      id={field.id}
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={typeof field.value === 'number' ? field.value : ''}
+                      onChange={(event) =>
+                        field.onChange(
+                          event.target.value === '' ? undefined : Number(event.target.value),
+                        )
+                      }
+                      onBlur={field.onBlur}
+                      aria-invalid={field.invalid}
+                      aria-describedby={field.describedBy}
+                    />
+                  )}
+                </Field>
 
-              <fieldset className="mt-4">
-                <legend className="text-sm font-medium">Goods needed</legend>
-                {itemsQuery.isPending ? (
-                  <p role="status" className="mt-1 text-sm text-text-muted">
-                    Loading goods…
-                  </p>
-                ) : null}
-                {itemsQuery.error !== null ? (
-                  <p role="alert" className="mt-1 text-sm text-text-muted">
-                    {itemsQuery.error}{' '}
-                    <button type="button" onClick={itemsQuery.refetch} className="underline">
-                      Try again
-                    </button>
-                  </p>
-                ) : null}
-                <ul className="mt-2 space-y-2">
-                  {catalog.map((item) => {
-                    const pick = picks[item.id] ?? { checked: false, quantity: 1, customName: '' };
-                    const hint = capHint(item, household);
-                    return (
-                      <li key={item.id} className="rounded-md border border-border px-3 py-2">
-                        <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={pick.checked}
-                            onChange={() => toggleItem(item.id)}
-                            className="h-4 w-4 accent-primary-subtle"
-                          />
-                          <span className="font-medium">
-                            {item.name}{' '}
-                            <span className="font-normal text-text-muted">({item.unit})</span>
-                          </span>
-                        </label>
-                        {hint === null ? null : (
-                          <p className="mt-1 text-xs text-text-muted">{hint}</p>
-                        )}
-                        {pick.checked ? (
-                          <div className="mt-2 flex items-center gap-2">
-                            <label htmlFor={`qty-${item.id}`} className="text-xs text-text-muted">
-                              Qty
-                            </label>
-                            <input
-                              id={`qty-${item.id}`}
-                              type="number"
-                              min={1}
-                              value={pick.quantity}
-                              onChange={(event) => setQuantity(item.id, Number(event.target.value))}
-                              className="w-20 rounded-md border border-border-strong bg-surface px-2 py-1 text-sm"
-                            />
-                            {item.name === 'Other' ? (
-                              <input
-                                type="text"
-                                aria-label="Describe the item"
-                                placeholder="Describe the item"
-                                value={pick.customName}
-                                onChange={(event) =>
-                                  setPicks((prev) => ({
-                                    ...prev,
-                                    [item.id]: {
-                                      checked: true,
-                                      quantity: pick.quantity,
-                                      customName: event.target.value,
-                                    },
-                                  }))
-                                }
-                                className="flex-1 rounded-md border border-border-strong bg-surface px-2 py-1 text-sm"
-                              />
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-                <FieldError message={errors.items?.message} />
-              </fieldset>
-
-              <div className="mt-4">
-                <label htmlFor="notes" className="block text-sm font-medium">
-                  Leave a Note
-                </label>
-                <textarea
-                  id="notes"
-                  rows={4}
-                  {...register('notes')}
-                  className={`mt-1 ${inputClass}`}
-                />
-                <FieldError message={errors.notes?.message} />
-              </div>
-
-              <div className="mt-4">
-                <label className="flex cursor-pointer items-start gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    {...register('consent')}
-                    className="mt-1 h-4 w-4 accent-primary-subtle"
-                  />
-                  <span>
-                    I consent to Agapay collecting my name, contact details, and location to process
-                    this relief request.
-                  </span>
-                </label>
-                <FieldError message={errors.consent?.message} />
-              </div>
-
-              <div className="mt-4">
-                <TurnstileWidget onToken={(token) => setValue('turnstileToken', token ?? '')} />
-                <FieldError message={errors.turnstileToken?.message} />
-              </div>
-
-              {watchedItems.length > 0 || watchedCampaignId.length > 0 ? (
-                <div className="mt-4 rounded-md bg-surface-alt p-3 text-sm">
-                  <p className="font-semibold">Review before submitting</p>
-                  <p className="mt-1 text-text-muted">
-                    {selectedCampaign?.name ?? 'No campaign chosen'} · {reviewItems.length}{' '}
-                    {reviewItems.length === 1 ? 'item' : 'items'}
-                    {reviewItems.length === 0
-                      ? ''
-                      : `: ${reviewItems
-                          .map((item) => `${item.name} × ${picks[item.id]?.quantity ?? 1}`)
-                          .join(', ')}`}
-                  </p>
-                </div>
-              ) : null}
-
-              {submitError === null ? null : (
-                <div role="alert" className="mt-4">
-                  <p className="text-sm font-medium">{submitError}</p>
-                  {isDuplicate ? (
-                    <Link to="/track" className="mt-1 inline-block text-sm underline">
-                      Go to the tracking page
-                    </Link>
+                <fieldset className="mt-4">
+                  <legend className="text-sm font-medium">Goods needed</legend>
+                  {itemsQuery.isPending ? (
+                    <p role="status" className="mt-1 text-sm text-text-muted">
+                      Loading goods…
+                    </p>
                   ) : null}
-                </div>
-              )}
+                  {itemsQuery.error !== null ? (
+                    <p role="alert" className="mt-1 text-sm text-text-muted">
+                      {itemsQuery.error}{' '}
+                      <button type="button" onClick={itemsQuery.refetch} className="underline">
+                        Try again
+                      </button>
+                    </p>
+                  ) : null}
+                  <div className="mt-2 space-y-2">
+                    {CATEGORY_ORDER.filter((category) =>
+                      catalog.some((item) => item.category === category),
+                    ).map((category, groupIndex) => {
+                      const group = catalog.filter((item) => item.category === category);
+                      const selected = group.filter(
+                        (item) => picks[item.id]?.checked === true,
+                      ).length;
+                      return (
+                        <details
+                          key={category}
+                          open={groupIndex === 0}
+                          className="rounded-md border border-border px-3 py-2"
+                        >
+                          <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                            {categoryLabel(category)}{' '}
+                            <span className="font-normal text-text-muted">
+                              {selected > 0
+                                ? `${selected} selected`
+                                : `${group.length} ${group.length === 1 ? 'good' : 'goods'}`}
+                            </span>
+                          </summary>
+                          <ul className="mt-2 space-y-2">
+                            {group.map((item) => {
+                              const pick = picks[item.id] ?? {
+                                checked: false,
+                                quantity: 1,
+                                customName: '',
+                              };
+                              const hint = capHint(item, household);
+                              return (
+                                <li
+                                  key={item.id}
+                                  className="border-t border-border px-1 py-2 first:border-t-0"
+                                >
+                                  <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={pick.checked}
+                                      onChange={() => toggleItem(item.id)}
+                                      className="h-4 w-4 accent-primary-subtle"
+                                    />
+                                    <span className="font-medium">
+                                      {item.name}{' '}
+                                      <span className="font-normal text-text-muted">
+                                        ({item.unit})
+                                      </span>
+                                    </span>
+                                  </label>
+                                  {hint === null ? null : (
+                                    <p className="mt-1 text-xs text-text-muted">{hint}</p>
+                                  )}
+                                  {pick.checked ? (
+                                    <div className="mt-2 flex items-center gap-2">
+                                      <label
+                                        htmlFor={`qty-${item.id}`}
+                                        className="text-xs text-text-muted"
+                                      >
+                                        Qty
+                                      </label>
+                                      <input
+                                        id={`qty-${item.id}`}
+                                        type="number"
+                                        min={1}
+                                        value={pick.quantity}
+                                        onChange={(event) =>
+                                          setQuantity(item.id, Number(event.target.value))
+                                        }
+                                        className="w-20 rounded-md border border-input bg-surface px-2 py-1 text-sm"
+                                      />
+                                      {item.name === 'Other' ? (
+                                        <input
+                                          type="text"
+                                          aria-label="Describe the item"
+                                          placeholder="Describe the item"
+                                          value={pick.customName}
+                                          onChange={(event) =>
+                                            setPicks((prev) => ({
+                                              ...prev,
+                                              [item.id]: {
+                                                checked: true,
+                                                quantity: pick.quantity,
+                                                customName: event.target.value,
+                                              },
+                                            }))
+                                          }
+                                          className="flex-1 rounded-md border border-input bg-surface px-2 py-1 text-sm"
+                                        />
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </details>
+                      );
+                    })}
+                  </div>
+                  <FieldError message={errors.items?.message} />
+                </fieldset>
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  to="/track"
-                  className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                >
-                  Have Already Submitted
-                </Link>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                >
-                  {isSubmitting ? 'Submitting…' : 'Submit for Verification'}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div>
-              <h2 className="font-display text-2xl font-bold tracking-tight">Request received</h2>
-              <p className="mt-1 text-sm text-text-muted">
-                Your reference number is below. A confirmation email is on its way.
-              </p>
-              <p
-                aria-label="Reference number"
-                className="mt-4 rounded-md bg-surface-alt p-4 text-center text-xl font-bold tracking-wide"
+                <Field control={control} name="notes" label="Leave a Note" className="mt-4">
+                  {(field) => (
+                    <textarea
+                      id={field.id}
+                      rows={4}
+                      value={typeof field.value === 'string' ? field.value : ''}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      aria-invalid={field.invalid}
+                      aria-describedby={field.describedBy}
+                      className={inputClass}
+                    />
+                  )}
+                </Field>
+
+                <div className="mt-4">
+                  <label className="flex cursor-pointer items-start gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      {...register('consent')}
+                      className="mt-1 h-4 w-4 accent-primary-subtle"
+                    />
+                    <span>
+                      I consent to Agapay collecting my name, contact details, and location to
+                      process this relief request.
+                    </span>
+                  </label>
+                  <FieldError message={errors.consent?.message} />
+                </div>
+
+                <div className="mt-4">
+                  <TurnstileWidget onToken={(token) => setValue('turnstileToken', token ?? '')} />
+                  <FieldError message={errors.turnstileToken?.message} />
+                </div>
+
+                {watchedItems.length > 0 || watchedCampaignId.length > 0 ? (
+                  <div className="mt-4 rounded-md bg-surface-alt p-3 text-sm">
+                    <p className="font-semibold">Review before submitting</p>
+                    <p className="mt-1 text-text-muted">
+                      {selectedCampaign?.name ?? 'No campaign chosen'} · {reviewItems.length}{' '}
+                      {reviewItems.length === 1 ? 'item' : 'items'}
+                      {reviewItems.length === 0
+                        ? ''
+                        : `: ${reviewItems
+                            .map((item) => `${item.name} × ${picks[item.id]?.quantity ?? 1}`)
+                            .join(', ')}`}
+                    </p>
+                  </div>
+                ) : null}
+
+                {submitError === null ? null : (
+                  <div role="alert" className="mt-4">
+                    <p className="text-sm font-medium">{submitError}</p>
+                    {isDuplicate ? (
+                      <Link to="/track" className="mt-1 inline-block text-sm underline">
+                        Go to the tracking page
+                      </Link>
+                    ) : null}
+                  </div>
+                )}
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    to="/track"
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    Have Already Submitted
+                  </Link>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    {isSubmitting ? 'Submitting…' : 'Submit for Verification'}
+                  </button>
+                </div>
+              </motion.form>
+            ) : (
+              <motion.div
+                key="request-success"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
               >
-                {success.referenceNumber}
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  to="/track"
-                  className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                <h2 className="font-display text-2xl font-bold tracking-tight">Request received</h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  Your reference number is below. A confirmation email is on its way.
+                </p>
+                <p
+                  aria-label="Reference number"
+                  className="mt-4 rounded-md bg-surface-alt p-4 text-center text-xl font-bold tracking-wide"
                 >
-                  Track my request
-                </Link>
-                <Link
-                  to="/"
-                  className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                >
-                  Back home
-                </Link>
-              </div>
-            </div>
-          )}
+                  {success.referenceNumber}
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    to="/track"
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    Track my request
+                  </Link>
+                  <Link
+                    to="/"
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    Back home
+                  </Link>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </section>
       </main>
       <LandingFooter />

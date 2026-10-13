@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { publicCampaignListResponseSchema } from '@agapay/shared';
 import { useApiQuery } from '../../lib/use-api-query';
 import { AsyncBoundary } from '../ui/AsyncBoundary';
+import { Reveal } from '../ui/reveal';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-PH', { dateStyle: 'medium' });
@@ -52,7 +53,7 @@ export function AffectedAreasSection() {
             emptyDescription="There are no relief drives accepting requests at the moment. Please check back later."
           >
             {(items) => (
-              <div className="flex flex-col gap-4">
+              <Reveal className="flex flex-col gap-4">
                 {items.map((campaign) => (
                   <article
                     key={campaign.id}
@@ -82,7 +83,7 @@ export function AffectedAreasSection() {
                     </Link>
                   </article>
                 ))}
-              </div>
+              </Reveal>
             )}
           </AsyncBoundary>
         </div>

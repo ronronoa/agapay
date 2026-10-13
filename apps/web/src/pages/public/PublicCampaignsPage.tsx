@@ -3,6 +3,7 @@ import { publicCampaignListResponseSchema } from '@agapay/shared';
 import { useApiQuery } from '../../lib/use-api-query';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { AsyncBoundary } from '../../components/ui/AsyncBoundary';
+import { Reveal } from '../../components/ui/reveal';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-PH', { dateStyle: 'medium' });
@@ -33,7 +34,7 @@ export function PublicCampaignsPage() {
         emptyDescription="There are no relief drives accepting requests at the moment. Please check back later."
       >
         {(items) => (
-          <div className="grid gap-4 md:grid-cols-2">
+          <Reveal className="grid gap-4 md:grid-cols-2">
             {items.map((campaign) => (
               <article
                 key={campaign.id}
@@ -68,7 +69,7 @@ export function PublicCampaignsPage() {
                 </div>
               </article>
             ))}
-          </div>
+          </Reveal>
         )}
       </AsyncBoundary>
     </div>
