@@ -589,8 +589,16 @@ export async function approve(
     after: async (tx) => {
       const row = await tx.assistanceRequest.findUniqueOrThrow({
         where: { id },
-        select: { referenceNumber: true, trackingNumber: true, fullName: true, email: true },
+        select: {
+          referenceNumber: true,
+          trackingNumber: true,
+          fullName: true,
+          email: true,
+          campaign: { select: { name: true } },
+          items: { include: { itemType: { select: { name: true } } } },
+        },
       });
+      if (row.trackingNumber === null) throw internal('Tracking number vanished after minting.');
       if (row.trackingNumber === null) throw internal('Tracking number vanished after minting.');
       await tx.emailNotification.create({
         data: {
@@ -601,6 +609,8 @@ export async function approve(
             name: row.fullName,
             referenceNumber: row.referenceNumber,
             trackingNumber: row.trackingNumber,
+            campaignName: row.campaign.name,
+            items: row.items.map((item) => ({ name: item.itemType.name, quantity: item.quantity })),
           },
           priority: 1,
           relatedRequestId: id,
