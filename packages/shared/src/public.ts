@@ -156,6 +156,7 @@ export const publicItemTypeDtoSchema = z.object({
   id: z.string(),
   name: z.string(),
   unit: z.string(),
+  category: z.string(),
   maxPerRequest: z.number().nullable(),
   perHouseholdMember: z.number().nullable(),
 });

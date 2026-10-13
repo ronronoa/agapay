@@ -131,6 +131,7 @@ publicRouter.get('/item-types', async (_req, res) => {
         id: row.id,
         name: row.name,
         unit: row.unit,
+        category: row.category,
         maxPerRequest: row.maxPerRequest,
         perHouseholdMember: row.perHouseholdMember,
       })),
