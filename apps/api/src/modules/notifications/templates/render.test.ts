@@ -26,4 +26,45 @@ describe('renderEmail', () => {
       /not implemented/,
     );
   });
+
+  it('renders the approval mail in the branded layout with details and track button', () => {
+    const rendered = renderEmail(
+      'REQUEST_APPROVED',
+      {
+        name: 'Juan',
+        referenceNumber: 'REQ-2026-004281',
+        trackingNumber: 'TRK-82K4-19Q7',
+        campaignName: 'Typhoon Amihan Relief Drive',
+        items: [
+          { name: 'Food Packs', quantity: 2 },
+          { name: 'Drinking Water', quantity: 1 },
+        ],
+      },
+      'http://localhost:5173',
+    );
+    expect(rendered.subject).toBe('Your assistance request was approved');
+    expect(rendered.html).toContain('AGAPAY');
+    expect(rendered.html).toContain('Relief Today. Stronger Tomorrow.');
+    expect(rendered.html).toContain('TRK-82K4-19Q7');
+    expect(rendered.html).toContain('Typhoon Amihan Relief Drive');
+    expect(rendered.html).toContain('Food Packs x2');
+    expect(rendered.html).toContain('http://localhost:5173/track');
+    expect(rendered.text).toContain('TRK-82K4-19Q7');
+  });
+
+  it('rejects malformed goods lists without echoing them', () => {
+    expect(() =>
+      renderEmail(
+        'REQUEST_APPROVED',
+        {
+          name: 'Juan',
+          referenceNumber: 'REQ-2026-004281',
+          trackingNumber: 'TRK-82K4-19Q7',
+          campaignName: 'Drive',
+          items: [{ name: 'Food Packs', quantity: 0 }],
+        },
+        'http://localhost:5173',
+      ),
+    ).toThrow(AppError);
+  });
 });

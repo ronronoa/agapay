@@ -28,7 +28,17 @@ const foodItem = {
   id: '22222222-2222-4222-8222-222222222222',
   name: 'Food Pack',
   unit: 'pack',
+  category: 'FOOD',
   maxPerRequest: 5,
+  perHouseholdMember: null,
+};
+
+const waterItem = {
+  id: '33333333-3333-4333-8333-333333333333',
+  name: 'Drinking Water',
+  unit: 'liter',
+  category: 'WATER',
+  maxPerRequest: null,
   perHouseholdMember: null,
 };
 
@@ -36,7 +46,7 @@ function mockGet(path: string): unknown {
   if (path.startsWith('/api/v1/public/campaigns')) {
     return { data: { items: [campaign], page: 1, pageSize: 100, total: 1 } };
   }
-  return { data: { items: [foodItem], page: 1, pageSize: 100, total: 1 } };
+  return { data: { items: [foodItem, waterItem], page: 1, pageSize: 100, total: 2 } };
 }
 
 beforeEach(() => {
@@ -156,5 +166,42 @@ describe('RequestAssistancePage', () => {
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Go to the tracking page' })).toBeInTheDocument(),
     );
+  });
+
+  it('groups goods by category with counts', async () => {
+    const { container } = renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
+    );
+    const summaries = [...container.querySelectorAll('summary')].map(
+      (node) => node.textContent ?? '',
+    );
+    expect(summaries.some((text) => text.includes('Food'))).toBe(true);
+    expect(summaries.some((text) => text.includes('Water'))).toBe(true);
+    expect(summaries.some((text) => text.includes('1 good'))).toBe(true);
+  });
+
+  it('submits selections from collapsed groups', async () => {
+    const { container } = renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
+    );
+    fillValidForm();
+    container.querySelectorAll('details').forEach((group) => group.setAttribute('open', ''));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Drinking Water/ }));
+    let submitted: unknown = null;
+    vi.mocked(apiFetch).mockImplementation((path: string, options?: { body?: unknown }) => {
+      if (path === '/api/v1/public/assistance-requests') {
+        submitted = (options as { body?: unknown } | undefined)?.body;
+        return Promise.resolve({ data: { referenceNumber: 'REQ-2026-004282', status: 'PENDING' } });
+      }
+      return Promise.resolve(mockGet(path));
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for Verification' }));
+
+    await waitFor(() => expect(screen.getByText('REQ-2026-004282')).toBeInTheDocument());
+    const body = submitted as { items?: { itemTypeId?: string }[] } | null;
+    const ids = (body?.items ?? []).map((item) => item.itemTypeId).sort();
+    expect(ids).toEqual([foodItem.id, waterItem.id].sort());
   });
 });

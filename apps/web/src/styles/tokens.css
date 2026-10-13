@@ -29,6 +29,10 @@
      3.69:1 to 4.18:1, clears the 3:1 UI minimum on every surface. */
   --color-border-strong: #6b8080;
 
+  /* Text-input edges only: the softest gray-teal that still clears the 3:1 UI
+     minimum (3.21:1 on white). Buttons and checkboxes keep --color-border-strong. */
+  --color-input: #7e9494;
+
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
