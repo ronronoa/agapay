@@ -3,6 +3,7 @@ export * from './audit.js';
 export * from './auth.js';
 export * from './campaigns.js';
 export * from './calendar.js';
+export * from './dashboard.js';
 export * from './distributions.js';
 export * from './donations.js';
 export * from './enums.js';

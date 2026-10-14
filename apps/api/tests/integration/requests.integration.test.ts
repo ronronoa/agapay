@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import type { z } from 'zod';
 import {
@@ -18,6 +18,11 @@ import {
 import { prisma } from '../../src/lib/prisma.js';
 import { createApp } from '../../src/app.js';
 import { hashPassword } from '../../src/modules/auth/password.js';
+import { verifyTurnstileToken } from '../../src/modules/public/turnstile.js';
+
+vi.mock('../../src/modules/public/turnstile.js', () => ({
+  verifyTurnstileToken: vi.fn().mockResolvedValue(true),
+}));
 
 const app = createApp();
 const PASSWORD = 'integration test secret';
@@ -201,6 +206,12 @@ describe('M3 assistance requests', () => {
 
   it('rejects a missing consent with 400', async () => {
     const res = await submitPublic({ consent: false });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a failed bot check with 400', async () => {
+    vi.mocked(verifyTurnstileToken).mockResolvedValueOnce(false);
+    const res = await submitPublic();
     expect(res.status).toBe(400);
   });
 
@@ -410,17 +421,33 @@ describe('M3 assistance requests', () => {
 
   it('serves the public catalog without drafts', async () => {
     const campaigns = parse(
-      await request(app).get('/api/v1/public/campaigns').set('X-Forwarded-For', uniqueIp()),
+      await request(app)
+        .get('/api/v1/public/campaigns?pageSize=100')
+        .set('X-Forwarded-For', uniqueIp()),
       publicCampaignListResponseSchema,
     ).data;
     expect(campaigns.items.some((item) => item.id === campaignId)).toBe(true);
     expect(campaigns.items.every((item) => item.status === 'ACTIVE')).toBe(true);
 
+    const visibleName = `A Public ${RUN}`;
+    const hiddenName = `A Hidden ${RUN}`;
+    await prisma.itemType.create({
+      data: { name: visibleName, category: 'HYGIENE', unit: 'kit' },
+      select: { id: true },
+    });
+    await prisma.itemType.create({
+      data: { name: hiddenName, category: 'HYGIENE', unit: 'kit', isActive: false },
+      select: { id: true },
+    });
     const types = parse(
-      await request(app).get('/api/v1/public/item-types').set('X-Forwarded-For', uniqueIp()),
+      await request(app)
+        .get('/api/v1/public/item-types?pageSize=100')
+        .set('X-Forwarded-For', uniqueIp()),
       publicItemTypeListResponseSchema,
     ).data;
-    expect(types.items.some((item) => item.id === plainTypeId)).toBe(true);
+    const names = types.items.map((item) => item.name);
+    expect(names).toContain(visibleName);
+    expect(names).not.toContain(hiddenName);
   });
 
   it('enforces the staff boundary and rate limits', async () => {

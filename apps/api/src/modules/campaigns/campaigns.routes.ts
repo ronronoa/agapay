@@ -3,6 +3,7 @@ import {
   createCampaignSchema,
   campaignListQuerySchema,
   updateCampaignSchema,
+  CampaignStatus,
 } from '@agapay/shared';
 import { validationError } from '../../lib/errors.js';
 import { pathParam } from '../../lib/http/params.js';
@@ -14,12 +15,15 @@ export const campaignsRouter = Router();
 
 campaignsRouter.use(requireAuth);
 
-campaignsRouter.get('/', requireRole('ADMIN', 'STAFF'), async (req, res) => {
+campaignsRouter.get('/', requireRole('ADMIN', 'STAFF', 'DONOR'), async (req, res) => {
   const raw: unknown = req.query;
   const parsed = campaignListQuerySchema.safeParse(raw);
   if (!parsed.success) throw validationError(parsed.error.flatten());
 
-  res.status(200).json({ data: await service.list(parsed.data) });
+  const actor = actorFrom(req);
+  const query =
+    actor.role === 'DONOR' ? { ...parsed.data, status: CampaignStatus.ACTIVE } : parsed.data;
+  res.status(200).json({ data: await service.list(query) });
 });
 
 campaignsRouter.get('/:id', requireRole('ADMIN', 'STAFF'), async (req, res) => {

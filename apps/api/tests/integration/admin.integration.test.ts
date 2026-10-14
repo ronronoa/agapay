@@ -120,10 +120,18 @@ describe('RBAC (SEC-03, API-06)', () => {
   });
 
   it('refuses a donor every admin route', async () => {
-    for (const path of ['/api/v1/users', '/api/v1/campaigns', '/api/v1/audit-logs']) {
+    for (const path of ['/api/v1/users', '/api/v1/audit-logs']) {
       const res = await request(app).get(path).set(as(donor));
       expect(res.status, path).toBe(403);
     }
+  });
+
+  it('lets a donor list active campaigns only', async () => {
+    const res = await request(app).get('/api/v1/campaigns?pageSize=100').set(as(donor));
+    expect(res.status).toBe(200);
+    const rows = campaignList(res).map((row) => row.status);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((status) => status === 'ACTIVE')).toBe(true);
   });
 
   it('lets staff read but not write', async () => {

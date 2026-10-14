@@ -20,6 +20,7 @@ import { requestsRouter } from './modules/requests/requests.routes.js';
 import { publicRouter } from './modules/public/public.routes.js';
 import { calendarRouter } from './modules/calendar/calendar.routes.js';
 import { distributionsRouter } from './modules/distributions/distributions.routes.js';
+import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { notificationsRouter } from './modules/notifications/notification.routes.js';
 
@@ -93,6 +94,7 @@ export function createApp() {
   app.use('/api/v1/public', publicRouter);
   app.use('/api/v1/calendar', calendarRouter);
   app.use('/api/v1/distributions', distributionsRouter);
+  app.use('/api/v1/dashboard', dashboardRouter);
   app.use('/api/v1/notifications/emails', notificationsRouter);
   app.use('/api/v1', healthRouter);
 

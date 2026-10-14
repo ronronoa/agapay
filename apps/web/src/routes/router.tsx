@@ -10,6 +10,15 @@ import { HomePage } from '../pages/HomePage';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { NotImplementedPage } from '../pages/NotImplementedPage';
+import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
+import { AdminMessagesPage } from '../pages/admin/AdminMessagesPage';
+import { DonorActivityPage } from '../pages/donor/DonorActivityPage';
+import { DonorCampaignPage } from '../pages/donor/DonorCampaignPage';
+import { DonorDashboardPage } from '../pages/donor/DonorDashboardPage';
+import { DonorDonationDetailPage } from '../pages/donor/DonorDonationDetailPage';
+import { DonorMessagesPage } from '../pages/donor/DonorMessagesPage';
+import { DonorSettingsPage } from '../pages/donor/DonorSettingsPage';
+import { DashboardShell } from '../components/layout/DashboardShell';
 import { PublicCampaignDetailPage } from '../pages/public/PublicCampaignDetailPage';
 import { PublicCampaignsPage } from '../pages/public/PublicCampaignsPage';
 import { RequestAssistancePage } from '../pages/public/RequestAssistancePage';
@@ -17,6 +26,14 @@ import { TrackAssistancePage } from '../pages/public/TrackAssistancePage';
 import { VerifyRequestPage } from '../pages/public/VerifyRequestPage';
 
 const ADMIN_ROLES = ['ADMIN', 'STAFF'] as const;
+
+const DONOR_NAV_ITEMS = [
+  { to: '/donor', label: 'Dashboard', end: true },
+  { to: '/donor/activity', label: 'Activity' },
+  { to: '/donor/campaign', label: 'Campaign' },
+  { to: '/donor/messages', label: 'Messages' },
+  { to: '/donor/settings', label: 'Settings' },
+] as const;
 
 // Groups are declared now so the shell and guards have a stable shape, but every
 // page beyond Home is a placeholder until its milestone lands.
@@ -55,10 +72,18 @@ const router = createBrowserRouter([
       { path: 'donate', element: <NotImplementedPage title="Donate" /> },
       {
         path: 'donor',
+        element: (
+          <AuthGate roles={['DONOR']}>
+            <DashboardShell items={DONOR_NAV_ITEMS} />
+          </AuthGate>
+        ),
         children: [
-          { index: true, element: <NotImplementedPage title="Donor Dashboard" /> },
-          { path: 'donations', element: <NotImplementedPage title="My Donations" /> },
-          { path: 'profile', element: <NotImplementedPage title="Profile" /> },
+          { index: true, element: <DonorDashboardPage /> },
+          { path: 'activity', element: <DonorActivityPage /> },
+          { path: 'donations/:id', element: <DonorDonationDetailPage /> },
+          { path: 'campaign', element: <DonorCampaignPage /> },
+          { path: 'messages', element: <DonorMessagesPage /> },
+          { path: 'settings', element: <DonorSettingsPage /> },
         ],
       },
 
@@ -66,7 +91,25 @@ const router = createBrowserRouter([
       {
         path: 'admin',
         children: [
-          { index: true, element: <NotImplementedPage title="Admin Dashboard" /> },
+          {
+            index: true,
+            element: (
+              <AuthGate roles={ADMIN_ROLES}>
+                <DashboardShell
+                  items={[
+                    { to: '/admin', label: 'Dashboard', end: true },
+                    { to: '/admin/campaigns', label: 'Campaigns' },
+                    { to: '/admin/item-types', label: 'Item Types' },
+                    { to: '/admin/users', label: 'Users' },
+                    { to: '/admin/audit-logs', label: 'Audit Log' },
+                    { to: '/admin/messages', label: 'Messages' },
+                  ]}
+                >
+                  <AdminDashboardPage />
+                </DashboardShell>
+              </AuthGate>
+            ),
+          },
           {
             path: 'campaigns',
             element: (
@@ -101,6 +144,14 @@ const router = createBrowserRouter([
           },
           { path: 'donations', element: <NotImplementedPage title="Donations" /> },
           { path: 'requests', element: <NotImplementedPage title="Assistance Requests" /> },
+          {
+            path: 'messages',
+            element: (
+              <AuthGate roles={ADMIN_ROLES}>
+                <AdminMessagesPage />
+              </AuthGate>
+            ),
+          },
           { path: 'beneficiaries', element: <NotImplementedPage title="Beneficiaries" /> },
           { path: 'inventory', element: <NotImplementedPage title="Inventory" /> },
           { path: 'distributions', element: <NotImplementedPage title="Distributions" /> },

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import type { z } from 'zod';
 import {
@@ -18,6 +18,10 @@ import {
 import { prisma } from '../../src/lib/prisma.js';
 import { createApp } from '../../src/app.js';
 import { hashPassword } from '../../src/modules/auth/password.js';
+
+vi.mock('../../src/modules/public/turnstile.js', () => ({
+  verifyTurnstileToken: vi.fn().mockResolvedValue(true),
+}));
 
 const app = createApp();
 const PASSWORD = 'integration test secret';

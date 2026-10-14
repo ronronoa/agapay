@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { CampaignStatus, ErrorCode, ERROR_STATUS } from '@agapay/shared';
 import {
   publicCampaignListQuerySchema,
+  publicItemTypeListQuerySchema,
   submitRequestSchema,
   trackRequestSchema,
   verifyRequestEmailSchema,
@@ -123,8 +124,16 @@ publicRouter.get('/campaigns/:slug', async (req, res) => {
   res.status(200).json({ data: toPublicCampaign(row) });
 });
 
-publicRouter.get('/item-types', async (_req, res) => {
-  const result = await listItemTypes({ isActive: true, page: 1, pageSize: 100 });
+publicRouter.get('/item-types', async (req, res) => {
+  const raw: unknown = req.query;
+  const parsed = publicItemTypeListQuerySchema.safeParse(raw);
+  if (!parsed.success) throw validationError(parsed.error.flatten());
+
+  const result = await listItemTypes({
+    isActive: true,
+    page: parsed.data.page,
+    pageSize: parsed.data.pageSize,
+  });
   res.status(200).json({
     data: {
       items: result.items.map((row) => ({
@@ -135,8 +144,8 @@ publicRouter.get('/item-types', async (_req, res) => {
         maxPerRequest: row.maxPerRequest,
         perHouseholdMember: row.perHouseholdMember,
       })),
-      page: 1,
-      pageSize: 100,
+      page: result.page,
+      pageSize: result.pageSize,
       total: result.total,
     },
   });

@@ -152,6 +152,15 @@ export const publicCampaignListResponseSchema = z.object({
 
 export const publicCampaignResponseSchema = z.object({ data: publicCampaignDtoSchema });
 
+export const publicItemTypeListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(100),
+  })
+  .strict();
+
+export type PublicItemTypeListQuery = z.infer<typeof publicItemTypeListQuerySchema>;
+
 export const publicItemTypeDtoSchema = z.object({
   id: z.string(),
   name: z.string(),
