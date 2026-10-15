@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { actorFrom, requireAuth, requireRole } from '../auth/auth.middleware.js';
+import { systemClock } from '../../lib/clock.js';
 import * as service from './dashboard.service.js';
 
 export const dashboardRouter = Router();
@@ -7,5 +8,5 @@ export const dashboardRouter = Router();
 dashboardRouter.use(requireAuth);
 
 dashboardRouter.get('/donor', requireRole('DONOR'), async (req, res) => {
-  res.status(200).json({ data: await service.donorDashboard(actorFrom(req)) });
+  res.status(200).json({ data: await service.donorDashboard(actorFrom(req), systemClock.now()) });
 });

@@ -12,6 +12,7 @@
     color: var(--color-text);
     font-family: var(--font-sans);
     overflow-x: hidden;
+    scroll-behavior: smooth;
   }
 
   /* One visible focus indicator everywhere, never removed. */

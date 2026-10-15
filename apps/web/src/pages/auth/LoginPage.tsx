@@ -52,7 +52,7 @@ export function LoginPage() {
             Sign in to continue supporting or receiving aid. Your secure account is ready when you
             are.
           </p>
-          <div className="mt-6 aspect-[4/3] w-full overflow-hidden rounded-lg">
+          <div className="mt-6 aspect-4/3 w-full overflow-hidden rounded-lg">
             <img
               src="/images/relief-distribution.png"
               alt="Volunteers packing donated relief goods"
@@ -77,12 +77,12 @@ export function LoginPage() {
           >
             <span
               aria-current="true"
-              className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-surface px-4 py-2 text-sm font-semibold shadow-sm"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-gray-300 bg-surface px-4 py-2 text-sm font-semibold shadow-xl"
             >
               Donor
             </span>
             <Link
-              to="/track"
+              to="/request-assistance"
               className="inline-flex min-h-[44px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Beneficiary

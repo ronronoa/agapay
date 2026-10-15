@@ -25,10 +25,18 @@ const drive = {
   priorityItems: [],
 };
 
+const stats = {
+  data: { beneficiariesServed: 1289, goodsDistributedThisMonth: 3240, verifiedDonations: 248 },
+};
+
+let drives: unknown[] = [drive];
+
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(apiFetch).mockResolvedValue({
-    data: { items: [drive], page: 1, pageSize: 6, total: 1 },
+  drives = [drive];
+  vi.mocked(apiFetch).mockImplementation((path: string) => {
+    if (path.startsWith('/api/v1/public/stats')) return Promise.resolve(stats);
+    return Promise.resolve({ data: { items: drives, page: 1, pageSize: 6, total: drives.length } });
   });
 });
 
@@ -63,7 +71,7 @@ describe('HomePage', () => {
     expect(screen.getByRole('heading', { name: /what agapay responds to/i })).toBeInTheDocument();
     expect(screen.getByText(/Spirit of Kapit-Bisig/)).toBeInTheDocument();
     expect(screen.getByText(/Filipinos Take Care of Their Own/)).toBeInTheDocument();
-    expect(screen.getByText(/Spirit of Bayanihan/)).toBeInTheDocument();
+    expect(screen.getByText(/No One Faces Life Alone/)).toBeInTheDocument();
   });
 
   it('renders live relief drives instead of fixed area claims', async () => {
@@ -77,7 +85,7 @@ describe('HomePage', () => {
   });
 
   it('states honestly when no drives are active', async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ data: { items: [], page: 1, pageSize: 6, total: 0 } });
+    drives = [];
     renderHome();
     await waitFor(() => expect(screen.getByText('No active drives right now')).toBeInTheDocument());
   });
@@ -89,8 +97,16 @@ describe('HomePage', () => {
         name: /connecting those who can help with those who need it most/i,
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/reviewed requests/i)).toBeInTheDocument();
-    expect(screen.getByText(/trackable status/i)).toBeInTheDocument();
+    expect(screen.getByText(/verified needs/i)).toBeInTheDocument();
+    expect(screen.getByText(/live status updates/i)).toBeInTheDocument();
+  });
+
+  it('shows the hero impact figures from the public stats endpoint', async () => {
+    renderHome();
+    await waitFor(() => expect(screen.getByText('1,289')).toBeInTheDocument());
+    expect(screen.getByText('Beneficiaries served')).toBeInTheDocument();
+    expect(screen.getByText('3,240')).toBeInTheDocument();
+    expect(screen.getByText('248')).toBeInTheDocument();
   });
 
   it('offers working paths instead of a newsletter form', () => {

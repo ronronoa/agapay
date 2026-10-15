@@ -19,6 +19,7 @@ import { list as listCampaigns, getBySlug } from '../campaigns/campaigns.service
 import { list as listItemTypes } from '../item-types/item-types.service.js';
 import * as service from '../requests/requests.service.js';
 import { verifyTurnstileToken } from './turnstile.js';
+import { stats } from './public.service.js';
 
 export const publicRouter = Router();
 
@@ -149,6 +150,10 @@ publicRouter.get('/item-types', async (req, res) => {
       total: result.total,
     },
   });
+});
+
+publicRouter.get('/stats', async (_req, res) => {
+  res.status(200).json({ data: await stats(systemClock.now()) });
 });
 
 publicRouter.post('/assistance-requests', submitPerIp, submitPerEmail, async (req, res) => {

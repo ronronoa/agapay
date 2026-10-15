@@ -9,6 +9,7 @@ import { LandingHeader } from '../../components/landing/LandingHeader';
 import { LandingFooter } from '../../components/landing/LandingFooter';
 import { Field } from '../../components/ui/field';
 import { Input } from '../../components/ui/input';
+import { Eye, EyeOff } from 'lucide-react';
 
 export function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -88,7 +89,7 @@ export function RegisterPage() {
                   Donor
                 </span>
                 <Link
-                  to="/track"
+                  to="/request-assistance"
                   className="inline-flex min-h-[44px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   Beneficiary
@@ -100,12 +101,13 @@ export function RegisterPage() {
                   <Input
                     id={field.id}
                     autoComplete="name"
-                    placeholder="Bernadette Lalata"
+                    placeholder="Juan Dela Cruz"
                     value={typeof field.value === 'string' ? field.value : ''}
                     onChange={(event) => field.onChange(event.target.value)}
                     onBlur={field.onBlur}
                     aria-invalid={field.invalid}
                     aria-describedby={field.describedBy}
+                    className=""
                   />
                 )}
               </Field>
@@ -183,15 +185,17 @@ export function RegisterPage() {
                       setConfirmError(null);
                     }}
                   />
+
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     aria-label={showPassword ? 'Hide passwords' : 'Show passwords'}
                     className="rounded-md border border-border-strong px-3 py-2 text-sm font-medium"
                   >
-                    {showPassword ? 'Hide' : 'Show'}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+
                 {confirmError === null ? null : (
                   <p role="alert" className="mt-1 text-sm text-text-muted">
                     {confirmError}

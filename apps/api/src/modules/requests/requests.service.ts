@@ -435,6 +435,14 @@ export async function queueList(query: RequestListQuery): Promise<{
   const where = {
     ...(query.status === undefined ? {} : { status: query.status }),
     ...(query.campaignId === undefined ? {} : { campaignId: query.campaignId }),
+    ...(query.from === undefined && query.to === undefined
+      ? {}
+      : {
+          submittedAt: {
+            ...(query.from === undefined ? {} : { gte: query.from }),
+            ...(query.to === undefined ? {} : { lte: query.to }),
+          },
+        }),
     ...(query.barangay === undefined
       ? {}
       : { barangay: { contains: query.barangay, mode: 'insensitive' as const } }),

@@ -32,6 +32,8 @@ export const requestListQuerySchema = z
     barangay: z.string().trim().min(1).max(120).optional(),
     flag: requestFlagFilterSchema.optional(),
     q: z.string().trim().min(1).max(120).optional(),
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
   })

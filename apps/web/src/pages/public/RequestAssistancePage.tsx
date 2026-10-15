@@ -250,14 +250,14 @@ export function RequestAssistancePage() {
                   className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-border p-1"
                 >
                   <Link
-                    to="/register"
+                    to="/login"
                     className="inline-flex min-h-[44px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Donor
                   </Link>
                   <span
                     aria-current="true"
-                    className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-surface px-4 py-2 text-sm font-semibold shadow-sm"
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-gray-300 bg-surface px-4 py-2 text-sm font-semibold shadow-xl"
                   >
                     Beneficiary
                   </span>
@@ -289,7 +289,7 @@ export function RequestAssistancePage() {
                     <Input
                       id={field.id}
                       autoComplete="name"
-                      placeholder="Bernadette Lalata"
+                      placeholder="Juan Dela Cruz"
                       value={typeof field.value === 'string' ? field.value : ''}
                       onChange={(event) => field.onChange(event.target.value)}
                       onBlur={field.onBlur}

@@ -16,9 +16,9 @@ export function AffectedAreasSection() {
   );
 
   return (
-    <section id="impact" aria-labelledby="areas-heading" className="w-full bg-white py-16 sm:py-20">
+    <section id="impact" aria-labelledby="areas-heading" className="w-full bg-bg py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl text-center">
+        <div className="max-w-3xl">
           <h2
             id="areas-heading"
             className="font-display text-2xl font-semibold tracking-tight text-text sm:text-3xl"
@@ -57,30 +57,34 @@ export function AffectedAreasSection() {
                 {items.map((campaign) => (
                   <article
                     key={campaign.id}
-                    className="rounded-xl border border-border bg-white px-6 py-5 shadow-sm"
+                    className="rounded-xl border border-border bg-surface px-6 py-5 shadow-card"
                   >
-                    <h3 className="font-display text-base font-semibold text-text">
-                      {campaign.name}
-                    </h3>
-                    <div className="mt-2 border-t border-border pt-2">
-                      <p className="text-sm text-text-muted">
-                        {formatDate(campaign.startDate)} to{' '}
-                        {campaign.endDate === null ? 'ongoing' : formatDate(campaign.endDate)}
-                      </p>
-                      <p className="text-sm text-text-muted">
-                        {campaign.areas.length === 0
-                          ? 'Open to all areas'
-                          : campaign.areas
-                              .map((area) => `${area.barangay}, ${area.city}`)
-                              .join(' · ')}
-                      </p>
+                    <div className="flex items-start gap-3">
+                      <span
+                        aria-hidden="true"
+                        className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary"
+                      />
+                      <div className="min-w-0">
+                        <h3 className="font-display text-base font-semibold text-text">
+                          {campaign.name}
+                        </h3>
+                        <p className="mt-1 text-sm text-text-muted">
+                          {formatDate(campaign.startDate)} to{' '}
+                          {campaign.endDate === null ? 'ongoing' : formatDate(campaign.endDate)} ·{' '}
+                          {campaign.areas.length === 0
+                            ? 'Open to all areas'
+                            : campaign.areas
+                                .map((area) => `${area.barangay}, ${area.city}`)
+                                .join(' · ')}
+                        </p>
+                        <Link
+                          to={`/campaigns/${campaign.slug}`}
+                          className="mt-2 inline-block text-sm font-medium text-primary underline underline-offset-4"
+                        >
+                          View this drive
+                        </Link>
+                      </div>
                     </div>
-                    <Link
-                      to={`/campaigns/${campaign.slug}`}
-                      className="mt-3 inline-block text-sm font-medium text-primary underline underline-offset-4"
-                    >
-                      View this drive
-                    </Link>
                   </article>
                 ))}
               </Reveal>

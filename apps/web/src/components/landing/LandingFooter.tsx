@@ -46,7 +46,7 @@ export function LandingFooter() {
             <div>
               <p className="font-display text-xl font-semibold">Agapay</p>
               <p className="mt-1 text-sm text-white/70">
-                Connecting compassion to communities need.
+                Connecting compassion to communities in need.
               </p>
             </div>
 

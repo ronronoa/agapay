@@ -19,6 +19,15 @@ const dashboard = {
     totalItemsReceived: 1250,
     campaignsSupported: 5,
     activeCampaigns: 3,
+    donationsThisMonth: 2,
+    featuredCampaign: {
+      id: 'c-2',
+      name: 'Typhoon Kristine Relief',
+      slug: 'typhoon-kristine',
+      endDate: null,
+      goalUnits: null,
+      raisedUnits: 0,
+    },
     recent: [
       {
         id: 'd-1',
@@ -51,10 +60,11 @@ describe('DonorDashboardPage', () => {
   it('shows live totals with no invented deltas', async () => {
     const { container } = renderPage();
     await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument());
-    expect(screen.getByText('Total Donations')).toBeInTheDocument();
+    expect(screen.getByText('Total donations')).toBeInTheDocument();
     expect(screen.getByText('1,250')).toBeInTheDocument();
     expect(screen.getByText('Flood Relief')).toBeInTheDocument();
     expect(container.textContent ?? '').not.toMatch(/\+\d+(\.\d+)?%/);
+    expect(screen.getByText('+2 this month')).toBeInTheDocument();
   });
 
   it('labels the assistant as coming soon instead of faking it', () => {
@@ -67,9 +77,21 @@ describe('DonorDashboardPage', () => {
   it('links the donation card at the live campaign list', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument());
-    expect(screen.getByRole('link', { name: 'Browse campaigns' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Donate Now/i })).toHaveAttribute(
       'href',
       '/donor/campaign',
     );
+  });
+
+  it('features a live campaign and stays honest when no goal is set', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument());
+    expect(screen.getByText('Featured campaign')).toBeInTheDocument();
+    expect(screen.getByText('No goal set for this campaign yet.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Support this campaign' })).toHaveAttribute(
+      'href',
+      '/donate?campaign=c-2',
+    );
+    expect(screen.getByText('Completed')).toBeInTheDocument();
   });
 });

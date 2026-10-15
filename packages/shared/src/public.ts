@@ -179,3 +179,13 @@ export const publicItemTypeListResponseSchema = z.object({
     total: z.number().int(),
   }),
 });
+
+export const publicStatsResponseSchema = z.object({
+  data: z.object({
+    beneficiariesServed: z.number().int(),
+    goodsDistributedThisMonth: z.number().int(),
+    verifiedDonations: z.number().int(),
+  }),
+});
+
+export type PublicStatsResponse = z.infer<typeof publicStatsResponseSchema>;

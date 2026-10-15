@@ -259,6 +259,16 @@ export async function list(query: DistributionListQuery): Promise<{
     ...(query.eventId === undefined ? {} : { calendarEventId: query.eventId }),
     ...(query.requestId === undefined ? {} : { requestId: query.requestId }),
     ...(query.campaignId === undefined ? {} : { request: { campaignId: query.campaignId } }),
+    ...(query.from === undefined && query.to === undefined
+      ? {}
+      : {
+          // Dated on completion: a scheduled distribution has no distributedAt,
+          // so a range only returns distributions that actually happened.
+          distributedAt: {
+            ...(query.from === undefined ? {} : { gte: query.from }),
+            ...(query.to === undefined ? {} : { lte: query.to }),
+          },
+        }),
   };
   const [rows, total] = await Promise.all([
     prisma.distribution.findMany({

@@ -1,5 +1,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { Activity, LayoutDashboard, Megaphone, MessageSquare, Settings } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
+import { AdminShell } from '../components/layout/AdminShell';
 import { AuthGate } from '../components/auth/AuthGate';
 import { CampaignsPage } from '../pages/admin/CampaignsPage';
 import { AuditLogPage } from '../pages/admin/AuditLogPage';
@@ -36,11 +38,11 @@ import { VerifyRequestPage } from '../pages/public/VerifyRequestPage';
 const ADMIN_ROLES = ['ADMIN', 'STAFF'] as const;
 
 const DONOR_NAV_ITEMS = [
-  { to: '/donor', label: 'Dashboard', end: true },
-  { to: '/donor/activity', label: 'Activity' },
-  { to: '/donor/campaign', label: 'Campaign' },
-  { to: '/donor/messages', label: 'Messages' },
-  { to: '/donor/settings', label: 'Settings' },
+  { to: '/donor', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/donor/activity', label: 'Activity', icon: Activity },
+  { to: '/donor/campaign', label: 'Campaign', icon: Megaphone },
+  { to: '/donor/messages', label: 'Messages', icon: MessageSquare },
+  { to: '/donor/settings', label: 'Settings', icon: Settings },
 ] as const;
 
 // Groups are declared now so the shell and guards have a stable shape, but every
@@ -94,6 +96,89 @@ const router = createBrowserRouter([
     ],
   },
 
+  // The admin application gets the same full-height shell as the donor one,
+  // so it sits outside the public AppShell for the same reason.
+  {
+    path: 'admin',
+    element: (
+      <AuthGate roles={ADMIN_ROLES}>
+        <AdminShell />
+      </AuthGate>
+    ),
+    children: [
+      { index: true, element: <AdminDashboardPage />, handle: { shellTitle: 'Dashboard' } },
+      {
+        path: 'campaigns',
+        element: (
+          <AuthGate roles={ADMIN_ROLES}>
+            <CampaignsPage />
+          </AuthGate>
+        ),
+      },
+      {
+        path: 'item-types',
+        element: (
+          <AuthGate roles={ADMIN_ROLES}>
+            <ItemTypesPage />
+          </AuthGate>
+        ),
+      },
+      {
+        path: 'users',
+        element: (
+          <AuthGate roles={['ADMIN']}>
+            <UsersPage />
+          </AuthGate>
+        ),
+      },
+      {
+        path: 'audit-logs',
+        element: (
+          <AuthGate roles={ADMIN_ROLES}>
+            <AuditLogPage />
+          </AuthGate>
+        ),
+      },
+      {
+        path: 'donations',
+        element: (
+          <AuthGate roles={ADMIN_ROLES}>
+            <DonationsPage />
+          </AuthGate>
+        ),
+      },
+      {
+        path: 'requests',
+        element: (
+          <AuthGate roles={ADMIN_ROLES}>
+            <RequestsPage />
+          </AuthGate>
+        ),
+      },
+      {
+        path: 'messages',
+        element: (
+          <AuthGate roles={ADMIN_ROLES}>
+            <AdminMessagesPage />
+          </AuthGate>
+        ),
+      },
+      { path: 'beneficiaries', element: <NotImplementedPage title="Beneficiaries" /> },
+      {
+        path: 'inventory',
+        element: (
+          <AuthGate roles={ADMIN_ROLES}>
+            <InventoryPage />
+          </AuthGate>
+        ),
+      },
+      { path: 'distributions', element: <NotImplementedPage title="Distributions" /> },
+      { path: 'calendar', element: <NotImplementedPage title="Calendar" /> },
+      { path: 'reports', element: <NotImplementedPage title="Reports" /> },
+      { path: 'settings', element: <NotImplementedPage title="Settings" /> },
+    ],
+  },
+
   {
     path: '/',
     element: <AppShell />,
@@ -105,104 +190,6 @@ const router = createBrowserRouter([
       { path: 'campaigns/:slug', element: <PublicCampaignDetailPage /> },
       { path: 'track', element: <TrackAssistancePage /> },
       { path: 'verify-request', element: <VerifyRequestPage /> },
-
-      // Admin
-      {
-        path: 'admin',
-        children: [
-          {
-            index: true,
-            element: (
-              <AuthGate roles={ADMIN_ROLES}>
-                <DashboardShell
-                  items={[
-                    { to: '/admin', label: 'Dashboard', end: true },
-                    { to: '/admin/campaigns', label: 'Campaigns' },
-                    { to: '/admin/donations', label: 'Donations' },
-                    { to: '/admin/requests', label: 'Requests' },
-                    { to: '/admin/inventory', label: 'Inventory' },
-                    { to: '/admin/item-types', label: 'Item Types' },
-                    { to: '/admin/users', label: 'Users' },
-                    { to: '/admin/audit-logs', label: 'Audit Log' },
-                    { to: '/admin/messages', label: 'Messages' },
-                  ]}
-                >
-                  <AdminDashboardPage />
-                </DashboardShell>
-              </AuthGate>
-            ),
-          },
-          {
-            path: 'campaigns',
-            element: (
-              <AuthGate roles={ADMIN_ROLES}>
-                <CampaignsPage />
-              </AuthGate>
-            ),
-          },
-          {
-            path: 'item-types',
-            element: (
-              <AuthGate roles={ADMIN_ROLES}>
-                <ItemTypesPage />
-              </AuthGate>
-            ),
-          },
-          {
-            path: 'users',
-            element: (
-              <AuthGate roles={['ADMIN']}>
-                <UsersPage />
-              </AuthGate>
-            ),
-          },
-          {
-            path: 'audit-logs',
-            element: (
-              <AuthGate roles={ADMIN_ROLES}>
-                <AuditLogPage />
-              </AuthGate>
-            ),
-          },
-          {
-            path: 'donations',
-            element: (
-              <AuthGate roles={ADMIN_ROLES}>
-                <DonationsPage />
-              </AuthGate>
-            ),
-          },
-          {
-            path: 'requests',
-            element: (
-              <AuthGate roles={ADMIN_ROLES}>
-                <RequestsPage />
-              </AuthGate>
-            ),
-          },
-          {
-            path: 'messages',
-            element: (
-              <AuthGate roles={ADMIN_ROLES}>
-                <AdminMessagesPage />
-              </AuthGate>
-            ),
-          },
-          { path: 'beneficiaries', element: <NotImplementedPage title="Beneficiaries" /> },
-          {
-            path: 'inventory',
-            element: (
-              <AuthGate roles={ADMIN_ROLES}>
-                <InventoryPage />
-              </AuthGate>
-            ),
-          },
-          { path: 'distributions', element: <NotImplementedPage title="Distributions" /> },
-          { path: 'calendar', element: <NotImplementedPage title="Calendar" /> },
-          { path: 'reports', element: <NotImplementedPage title="Reports" /> },
-          { path: 'settings', element: <NotImplementedPage title="Settings" /> },
-        ],
-      },
 
       { path: 'forbidden', element: <ForbiddenPage /> },
       { path: '*', element: <NotFoundPage /> },

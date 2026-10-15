@@ -6,6 +6,7 @@ import {
   accessTokenResponseSchema,
   donorDashboardResponseSchema,
   errorEnvelopeSchema,
+  publicStatsResponseSchema,
 } from '@agapay/shared';
 import { prisma } from '../../src/lib/prisma.js';
 import { createApp } from '../../src/app.js';
@@ -126,5 +127,97 @@ describe('GET /dashboard/donor', () => {
     expect(body.campaignsSupported).toBe(1);
     expect(body.recent).toHaveLength(2);
     expect(body.activeCampaigns).toBeGreaterThanOrEqual(1);
+    expect(body.donationsThisMonth).toBe(2);
+    expect(body.featuredCampaign).not.toBeNull();
+    expect(typeof body.featuredCampaign?.raisedUnits).toBe('number');
+  });
+
+  it('measures campaign goal and progress from real donations (BR-DON-06)', async () => {
+    const donor = await makeDonor();
+    const itemType = await prisma.itemType.create({
+      data: { name: `Goal Item ${RUN}`, category: 'FOOD', unit: 'pack' },
+      select: { id: true },
+    });
+    // Any end date beats the campaigns that have none, so this one is
+    // deterministically the featured pick.
+    const campaign = await prisma.campaign.create({
+      data: {
+        name: `Goal Camp ${RUN}`,
+        slug: `goal-camp-${RUN}`,
+        description: 'goal fixture',
+        calamityType: 'FLOOD',
+        status: 'ACTIVE',
+        startDate: new Date('2000-01-01'),
+        endDate: new Date('2099-01-01'),
+        priorityItems: { create: [{ itemTypeId: itemType.id, targetQuantity: 10 }] },
+      },
+      select: { id: true },
+    });
+    const gift = async (
+      status: 'VERIFIED' | 'PENDING',
+      quantityDeclared: number,
+    ): Promise<void> => {
+      await prisma.donation.create({
+        data: {
+          referenceNumber: `DON-GOAL-${status}-${RUN}-${seq++}`,
+          donorId: donor.id,
+          campaignId: campaign.id,
+          status,
+          items: { create: [{ itemTypeId: itemType.id, quantityDeclared }] },
+        },
+      });
+    };
+    await gift('VERIFIED', 4);
+    await gift('PENDING', 6);
+
+    const res = await request(app)
+      .get('/api/v1/dashboard/donor')
+      .set('X-Forwarded-For', uniqueIp())
+      .set('Authorization', `Bearer ${donor.token}`);
+    expect(res.status).toBe(200);
+    const featured = parse(res, donorDashboardResponseSchema).data.featuredCampaign;
+    // Prior runs leave their own copy of this fixture behind, so assert on the
+    // fixture's values rather than this run's row id.
+    expect(featured?.name.startsWith('Goal Camp')).toBe(true);
+    expect(featured?.goalUnits).toBe(10);
+    // Only the verified gift counts; the pending one must not move the bar.
+    expect(featured?.raisedUnits).toBe(4);
+  });
+});
+
+describe('GET /public/stats', () => {
+  it('returns non-negative totals that move with a verified donation', async () => {
+    const donor = await makeDonor();
+    const campaign = await prisma.campaign.create({
+      data: {
+        name: `Stats Camp ${RUN}`,
+        slug: `stats-camp-${RUN}`,
+        description: 'stats fixture',
+        calamityType: 'TYPHOON',
+        status: 'ACTIVE',
+        startDate: new Date(),
+      },
+      select: { id: true },
+    });
+    const itemType = await prisma.itemType.create({
+      data: { name: `Stats Item ${RUN}`, category: 'WATER', unit: 'liter' },
+      select: { id: true },
+    });
+    await prisma.donation.create({
+      data: {
+        referenceNumber: `DON-STATS-${RUN}`,
+        donorId: donor.id,
+        campaignId: campaign.id,
+        status: 'VERIFIED',
+        items: { create: [{ itemTypeId: itemType.id, quantityDeclared: 5 }] },
+      },
+    });
+
+    const res = await request(app).get('/api/v1/public/stats').set('X-Forwarded-For', uniqueIp());
+    expect(res.status).toBe(200);
+    const body = parse(res, publicStatsResponseSchema).data;
+    expect(body.verifiedDonations).toBeGreaterThanOrEqual(1);
+    expect(body.beneficiariesServed).toBeGreaterThanOrEqual(0);
+    expect(body.goodsDistributedThisMonth).toBeGreaterThanOrEqual(0);
   });
 });

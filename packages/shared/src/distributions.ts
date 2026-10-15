@@ -61,6 +61,8 @@ export const distributionListQuerySchema = z
     campaignId: z.string().uuid().optional(),
     eventId: z.string().uuid().optional(),
     requestId: z.string().uuid().optional(),
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
   })

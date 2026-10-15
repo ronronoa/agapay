@@ -20,6 +20,17 @@ export const donorRecentDonationSchema = z.object({
 
 export type DonorRecentDonation = z.infer<typeof donorRecentDonationSchema>;
 
+export const donorFeaturedCampaignSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  endDate: z.string().nullable(),
+  goalUnits: z.number().int().nullable(),
+  raisedUnits: z.number().int(),
+});
+
+export type DonorFeaturedCampaign = z.infer<typeof donorFeaturedCampaignSchema>;
+
 export const donorDashboardResponseSchema = z.object({
   data: z.object({
     totalDonations: z.number().int(),
@@ -27,6 +38,8 @@ export const donorDashboardResponseSchema = z.object({
     totalItemsReceived: z.number().int(),
     campaignsSupported: z.number().int(),
     activeCampaigns: z.number().int(),
+    donationsThisMonth: z.number().int(),
+    featuredCampaign: donorFeaturedCampaignSchema.nullable(),
     recent: z.array(donorRecentDonationSchema),
   }),
 });

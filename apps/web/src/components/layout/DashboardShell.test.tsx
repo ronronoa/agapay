@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { DashboardShell, type DashboardNavItem } from './DashboardShell';
@@ -9,13 +9,24 @@ const ITEMS: readonly DashboardNavItem[] = [
   { to: '/donor/activity', label: 'Activity' },
 ];
 
-function renderShell(): ReturnType<typeof render> {
+function renderShell(handle?: { shellTitle: string }): ReturnType<typeof render> {
   const ui: ReactElement = (
     <DashboardShell items={ITEMS}>
       <p>Child content</p>
     </DashboardShell>
   );
-  return render(<MemoryRouter initialEntries={['/donor']}>{ui}</MemoryRouter>);
+  // useMatches (the shell header title) needs a data router, not MemoryRouter.
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/donor',
+        element: ui,
+        ...(handle === undefined ? {} : { handle }),
+      },
+    ],
+    { initialEntries: ['/donor'] },
+  );
+  return render(<RouterProvider router={router} />);
 }
 
 describe('DashboardShell', () => {
@@ -42,5 +53,11 @@ describe('DashboardShell', () => {
   it('marks the active section without colour alone', () => {
     renderShell();
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('shows a route-provided header title instead of the search cluster', () => {
+    renderShell({ shellTitle: 'Dashboard' });
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Search…')).toBeNull();
   });
 });
