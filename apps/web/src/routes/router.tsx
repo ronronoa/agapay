@@ -7,10 +7,17 @@ import { ItemTypesPage } from '../pages/admin/ItemTypesPage';
 import { UsersPage } from '../pages/admin/UsersPage';
 import { ForbiddenPage } from '../pages/ForbiddenPage';
 import { HomePage } from '../pages/HomePage';
+import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
 import { LoginPage } from '../pages/auth/LoginPage';
+import { RegisterPage } from '../pages/auth/RegisterPage';
+import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
+import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { NotImplementedPage } from '../pages/NotImplementedPage';
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
+import { DonationsPage } from '../pages/admin/DonationsPage';
+import { RequestsPage } from '../pages/admin/RequestsPage';
+import { InventoryPage } from '../pages/admin/InventoryPage';
 import { AdminMessagesPage } from '../pages/admin/AdminMessagesPage';
 import { DonorActivityPage } from '../pages/donor/DonorActivityPage';
 import { DonorCampaignPage } from '../pages/donor/DonorCampaignPage';
@@ -18,6 +25,7 @@ import { DonorDashboardPage } from '../pages/donor/DonorDashboardPage';
 import { DonorDonationDetailPage } from '../pages/donor/DonorDonationDetailPage';
 import { DonorMessagesPage } from '../pages/donor/DonorMessagesPage';
 import { DonorSettingsPage } from '../pages/donor/DonorSettingsPage';
+import { DonatePage } from '../pages/donor/DonatePage';
 import { DashboardShell } from '../components/layout/DashboardShell';
 import { PublicCampaignDetailPage } from '../pages/public/PublicCampaignDetailPage';
 import { PublicCampaignsPage } from '../pages/public/PublicCampaignsPage';
@@ -47,6 +55,14 @@ const router = createBrowserRouter([
   // like the landing page does.
   { path: 'request-assistance', element: <RequestAssistancePage /> },
 
+  // Auth screens follow the same standalone split layout as the beneficiary
+  // form, so they live outside the AppShell too.
+  { path: 'login', element: <LoginPage /> },
+  { path: 'register', element: <RegisterPage /> },
+  { path: 'verify-email', element: <VerifyEmailPage /> },
+  { path: 'forgot-password', element: <ForgotPasswordPage /> },
+  { path: 'reset-password', element: <ResetPasswordPage /> },
+
   {
     path: '/',
     element: <AppShell />,
@@ -58,18 +74,18 @@ const router = createBrowserRouter([
       { path: 'campaigns/:slug', element: <PublicCampaignDetailPage /> },
       { path: 'track', element: <TrackAssistancePage /> },
       { path: 'verify-request', element: <VerifyRequestPage /> },
-      {
-        path: 'login',
-        element: (
-          <div className="py-8">
-            <LoginPage />
-          </div>
-        ),
-      },
-      { path: 'register', element: <NotImplementedPage title="Donor Registration" /> },
 
       // Donor
-      { path: 'donate', element: <NotImplementedPage title="Donate" /> },
+      {
+        path: 'donate',
+        element: (
+          <AuthGate roles={['DONOR']}>
+            <DashboardShell items={DONOR_NAV_ITEMS}>
+              <DonatePage />
+            </DashboardShell>
+          </AuthGate>
+        ),
+      },
       {
         path: 'donor',
         element: (
@@ -99,6 +115,9 @@ const router = createBrowserRouter([
                   items={[
                     { to: '/admin', label: 'Dashboard', end: true },
                     { to: '/admin/campaigns', label: 'Campaigns' },
+                    { to: '/admin/donations', label: 'Donations' },
+                    { to: '/admin/requests', label: 'Requests' },
+                    { to: '/admin/inventory', label: 'Inventory' },
                     { to: '/admin/item-types', label: 'Item Types' },
                     { to: '/admin/users', label: 'Users' },
                     { to: '/admin/audit-logs', label: 'Audit Log' },
@@ -142,8 +161,22 @@ const router = createBrowserRouter([
               </AuthGate>
             ),
           },
-          { path: 'donations', element: <NotImplementedPage title="Donations" /> },
-          { path: 'requests', element: <NotImplementedPage title="Assistance Requests" /> },
+          {
+            path: 'donations',
+            element: (
+              <AuthGate roles={ADMIN_ROLES}>
+                <DonationsPage />
+              </AuthGate>
+            ),
+          },
+          {
+            path: 'requests',
+            element: (
+              <AuthGate roles={ADMIN_ROLES}>
+                <RequestsPage />
+              </AuthGate>
+            ),
+          },
           {
             path: 'messages',
             element: (
@@ -153,7 +186,14 @@ const router = createBrowserRouter([
             ),
           },
           { path: 'beneficiaries', element: <NotImplementedPage title="Beneficiaries" /> },
-          { path: 'inventory', element: <NotImplementedPage title="Inventory" /> },
+          {
+            path: 'inventory',
+            element: (
+              <AuthGate roles={ADMIN_ROLES}>
+                <InventoryPage />
+              </AuthGate>
+            ),
+          },
           { path: 'distributions', element: <NotImplementedPage title="Distributions" /> },
           { path: 'calendar', element: <NotImplementedPage title="Calendar" /> },
           { path: 'reports', element: <NotImplementedPage title="Reports" /> },

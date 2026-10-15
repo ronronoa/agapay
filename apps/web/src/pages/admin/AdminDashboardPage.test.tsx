@@ -57,9 +57,10 @@ describe('AdminDashboardPage', () => {
     expect(screen.getByText('Assistance requests')).toBeInTheDocument();
   });
 
-  it('shows queues as honestly pending instead of linking dead ends', async () => {
+  it('links the live queues instead of marking them as soon', async () => {
     renderPage();
-    await waitFor(() => expect(screen.getAllByText(/soon/i).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Review' })).toHaveLength(2));
+    expect(screen.getByRole('link', { name: 'View' })).toHaveAttribute('href', '/admin/inventory');
   });
 
   it('publishes no fabricated deltas', async () => {

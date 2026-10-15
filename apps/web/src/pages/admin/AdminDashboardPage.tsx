@@ -145,7 +145,7 @@ export function AdminDashboardPage() {
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
-        description="Operations at a glance. Queues marked soon arrive with the admin slice."
+        description="Operations at a glance. Open a queue to review donations, requests, or low stock."
       />
 
       <Reveal className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -153,11 +153,15 @@ export function AdminDashboardPage() {
           title="Donations awaiting verification"
           count={pendingDonations.data?.data.total ?? null}
           actionLabel="Review"
+          to="/admin/donations"
+          ready
         />
         <NeedCard
           title="Assistance requests"
           count={pendingRequests.data?.data.total ?? null}
           actionLabel="Review"
+          to="/admin/requests"
+          ready
         />
         <NeedCard
           title="Distributions today"
@@ -170,7 +174,13 @@ export function AdminDashboardPage() {
           }
           actionLabel="Calendar"
         />
-        <NeedCard title="Low stock" count={lowStock.data?.data.total ?? null} actionLabel="View" />
+        <NeedCard
+          title="Low stock"
+          count={lowStock.data?.data.total ?? null}
+          actionLabel="View"
+          to="/admin/inventory"
+          ready
+        />
       </Reveal>
 
       <div className="grid gap-4 lg:grid-cols-3">

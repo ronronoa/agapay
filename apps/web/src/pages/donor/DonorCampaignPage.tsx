@@ -55,13 +55,12 @@ export function DonorCampaignPage() {
                   >
                     View details
                   </Link>
-                  <span
-                    aria-disabled="true"
-                    title="The donation form arrives in the next release"
-                    className="inline-flex min-h-[44px] cursor-not-allowed items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-surface opacity-60"
+                  <Link
+                    to={`/donate?campaign=${campaign.id}`}
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-surface hover:bg-primary-dark"
                   >
-                    Join Campaign (soon)
-                  </span>
+                    Join Campaign
+                  </Link>
                 </div>
               </article>
             ))}

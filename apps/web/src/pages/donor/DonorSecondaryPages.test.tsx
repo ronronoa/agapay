@@ -62,8 +62,10 @@ describe('DonorCampaignPage', () => {
       'href',
       '/campaigns/typhoon-amihan',
     );
-    const join = screen.getByText('Join Campaign (soon)');
-    expect(join).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('link', { name: 'Join Campaign' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/donate?campaign='),
+    );
   });
 });
 

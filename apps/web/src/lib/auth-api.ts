@@ -2,7 +2,10 @@ import {
   accessTokenResponseSchema,
   authUserSchema,
   errorEnvelopeSchema,
+  registeredUserResponseSchema,
+  verifyEmailResponseSchema,
   type AuthUserDto,
+  type RegisterInput,
 } from '@agapay/shared';
 import { ApiClientError, apiFetch } from './api-client.js';
 import { clearSession, getAccessToken, setSession, setUser } from './session.js';
@@ -29,6 +32,50 @@ export async function login(email: string, password: string): Promise<AuthUserDt
 
   setSession(parsed.data.data.accessToken, parsed.data.data.user);
   return parsed.data.data.user;
+}
+
+export async function register(input: RegisterInput): Promise<{ id: string; email: string }> {
+  const res: unknown = await apiFetch('/api/v1/auth/register', {
+    method: 'POST',
+    credentials: 'include',
+    body: input,
+  });
+  const parsed = registeredUserResponseSchema.safeParse(res);
+  if (!parsed.success)
+    throw new ApiClientError('INTERNAL', 'Registration failed.', 500, undefined, undefined);
+  return parsed.data.data;
+}
+
+export async function verifyAuthEmail(token: string): Promise<{ verified: boolean }> {
+  const res: unknown = await apiFetch('/api/v1/auth/verify-email', {
+    method: 'POST',
+    body: { token },
+  });
+  const parsed = verifyEmailResponseSchema.safeParse(res);
+  if (!parsed.success)
+    throw new ApiClientError('INTERNAL', 'Confirmation failed.', 500, undefined, undefined);
+  return parsed.data.data;
+}
+
+export async function resendVerification(email: string): Promise<void> {
+  await apiFetch('/api/v1/auth/resend-verification', {
+    method: 'POST',
+    body: { email },
+  });
+}
+
+export async function forgotPassword(email: string): Promise<void> {
+  await apiFetch('/api/v1/auth/forgot-password', {
+    method: 'POST',
+    body: { email },
+  });
+}
+
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await apiFetch('/api/v1/auth/reset-password', {
+    method: 'POST',
+    body: { token, password },
+  });
 }
 
 export async function logout(): Promise<void> {

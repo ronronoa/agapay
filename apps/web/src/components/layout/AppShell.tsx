@@ -14,6 +14,9 @@ const NAV_ITEMS = [
 // visitors and donors.
 const ADMIN_NAV_ITEMS = [
   { to: '/admin/campaigns', label: 'Campaigns' },
+  { to: '/admin/donations', label: 'Donations' },
+  { to: '/admin/requests', label: 'Requests' },
+  { to: '/admin/inventory', label: 'Inventory' },
   { to: '/admin/item-types', label: 'Item Types' },
   { to: '/admin/users', label: 'Users' },
   { to: '/admin/audit-logs', label: 'Audit Log' },

@@ -1,9 +1,21 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { donationResponseSchema } from '@agapay/shared';
+import { campaignListResponseSchema, donationResponseSchema } from '@agapay/shared';
+import type { SubmitDonationInput } from '@agapay/shared';
+import { ApiClientError, apiFetch } from '../../lib/api-client';
 import { useApiQuery } from '../../lib/use-api-query';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { AsyncBoundary } from '../../components/ui/AsyncBoundary';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import {
+  Dialog,
+  DialogClose,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from '../../components/ui/dialog';
+import { Button } from '../../components/ui/Button';
+import { DonateForm } from './DonateForm';
 
 function formatDate(iso: string | null): string {
   if (iso === null) return '—';
@@ -12,12 +24,56 @@ function formatDate(iso: string | null): string {
 
 export function DonorDonationDetailPage() {
   const { id } = useParams();
+  const [editing, setEditing] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const query = useApiQuery(
     ['donor-donation', id],
     `/api/v1/donations/${encodeURIComponent(id ?? '')}`,
     donationResponseSchema,
     { enabled: id !== undefined && id.length > 0 },
   );
+  const campaignsQuery = useApiQuery(
+    ['donor-campaigns', 'edit'],
+    '/api/v1/campaigns?pageSize=100',
+    campaignListResponseSchema,
+    { enabled: editing },
+  );
+
+  function onEdit(input: SubmitDonationInput): Promise<void> {
+    setActionError(null);
+    return apiFetch(`/api/v1/donations/${encodeURIComponent(id ?? '')}`, {
+      method: 'PATCH',
+      body: input,
+    })
+      .then(() => {
+        setEditing(false);
+        setActionMessage('Donation updated.');
+        query.refetch();
+      })
+      .catch((err: unknown) => {
+        setActionError(
+          err instanceof ApiClientError ? err.message : 'Update failed. Please try again.',
+        );
+      });
+  }
+
+  function onCancel(): void {
+    setActionError(null);
+    void apiFetch(`/api/v1/donations/${encodeURIComponent(id ?? '')}/cancel`, { method: 'POST' })
+      .then(() => {
+        setConfirmingCancel(false);
+        setActionMessage('Donation cancelled.');
+        query.refetch();
+      })
+      .catch((err: unknown) => {
+        setConfirmingCancel(false);
+        setActionError(
+          err instanceof ApiClientError ? err.message : 'Cancel failed. Please try again.',
+        );
+      });
+  }
 
   return (
     <div className="space-y-6">
@@ -40,6 +96,80 @@ export function DonorDonationDetailPage() {
             <p>
               <StatusBadge label={donation.status.replace(/_/g, ' ')} />
             </p>
+
+            {actionMessage === null ? null : (
+              <p role="status" className="text-sm font-medium">
+                {actionMessage}
+              </p>
+            )}
+            {actionError === null ? null : (
+              <p role="alert" className="text-sm font-medium">
+                {actionError}
+              </p>
+            )}
+
+            {donation.status === 'PENDING' && !editing ? (
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" onClick={() => setEditing(true)}>
+                  Edit donation
+                </Button>
+                <Button type="button" variant="accent" onClick={() => setConfirmingCancel(true)}>
+                  Cancel donation
+                </Button>
+              </div>
+            ) : null}
+
+            {editing ? (
+              <div className="rounded-lg border border-border bg-surface p-5 shadow-card">
+                <h2 className="font-display text-base font-semibold">Edit donation</h2>
+                <DonateForm
+                  campaigns={campaignsQuery.data?.data.items ?? []}
+                  defaults={{
+                    campaignId: donation.campaignId,
+                    preferredDate: donation.preferredDate?.slice(0, 10) ?? '',
+                    preferredNote: donation.preferredNote ?? '',
+                    notes: donation.notes ?? '',
+                    items: donation.items.map((item) => ({
+                      itemTypeId: item.itemTypeId,
+                      quantity: item.quantityDeclared,
+                      description: item.description ?? '',
+                      customName: item.customName ?? '',
+                      expiryDate: item.expiryDate?.slice(0, 10) ?? '',
+                      checked: true,
+                    })),
+                  }}
+                  submitLabel="Save changes"
+                  pendingLabel="Saving…"
+                  onSubmit={onEdit}
+                  submitError={null}
+                />
+                <Button
+                  type="button"
+                  variant="accent"
+                  className="mt-3"
+                  onClick={() => setEditing(false)}
+                >
+                  Stop editing
+                </Button>
+              </div>
+            ) : null}
+
+            <Dialog open={confirmingCancel} onOpenChange={setConfirmingCancel}>
+              <DialogTitle>Cancel this donation?</DialogTitle>
+              <DialogDescription>
+                {donation.referenceNumber} will be withdrawn. This cannot be undone.
+              </DialogDescription>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="accent">
+                    Keep donation
+                  </Button>
+                </DialogClose>
+                <Button type="button" onClick={onCancel}>
+                  Yes, cancel it
+                </Button>
+              </DialogFooter>
+            </Dialog>
 
             <section
               aria-label="Donated items"
