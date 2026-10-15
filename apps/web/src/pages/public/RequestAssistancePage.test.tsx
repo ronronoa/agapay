@@ -204,4 +204,25 @@ describe('RequestAssistancePage', () => {
     const ids = (body?.items ?? []).map((item) => item.itemTypeId).sort();
     expect(ids).toEqual([foodItem.id, waterItem.id].sort());
   });
+
+  it('starts every goods group collapsed and narrows them with the filter', async () => {
+    const { container } = renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
+    );
+    const groups = [...container.querySelectorAll('details')];
+    expect(groups.length).toBeGreaterThan(0);
+    expect(groups.every((group) => !group.open)).toBe(true);
+
+    const filter = screen.getByLabelText('Find a good');
+    fireEvent.change(filter, { target: { value: 'water' } });
+    const summaries = [...container.querySelectorAll('summary')].map(
+      (node) => node.textContent ?? '',
+    );
+    expect(summaries.some((text) => text.includes('Water'))).toBe(true);
+    expect(summaries.some((text) => text.includes('Food'))).toBe(false);
+
+    fireEvent.change(filter, { target: { value: 'no such good' } });
+    expect(screen.getByText('No goods match that filter.')).toBeInTheDocument();
+  });
 });

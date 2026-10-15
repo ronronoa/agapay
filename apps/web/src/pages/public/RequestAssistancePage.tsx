@@ -80,6 +80,7 @@ export function RequestAssistancePage() {
   const [success, setSuccess] = useState<{ referenceNumber: string } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
+  const [goodsFilter, setGoodsFilter] = useState('');
 
   const campaignsQuery = useApiQuery(
     ['public-campaigns'],
@@ -118,6 +119,13 @@ export function RequestAssistancePage() {
 
   const campaigns = campaignsQuery.data?.data.items ?? [];
   const catalog = itemsQuery.data?.data.items ?? [];
+  // shortcut: matches only the goods already loaded — the public endpoint caps
+  // pageSize at 100 and takes no q= search, so a larger catalogue needs one.
+  const filterQuery = goodsFilter.trim().toLowerCase();
+  const visibleCatalog =
+    filterQuery.length === 0
+      ? catalog
+      : catalog.filter((item) => item.name.toLowerCase().includes(filterQuery));
   const householdRaw = watch('householdSize');
   const household = typeof householdRaw === 'number' ? householdRaw : undefined;
   const watchedItems = watch('items');
@@ -192,18 +200,18 @@ export function RequestAssistancePage() {
   return (
     <div className="min-h-screen bg-bg">
       <LandingHeader />
-      <main className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-2 lg:px-8">
+      <main className="mx-auto grid w-full max-w-6xl items-start gap-8 px-4 py-10 sm:px-6 md:grid-cols-2 lg:px-8">
         <section
           aria-label="About requesting assistance"
-          className="rounded-xl border border-border bg-surface p-8 shadow-card"
+          className="rounded-xl border border-border bg-surface p-8 shadow-card md:sticky md:top-6"
         >
           <p className="text-lg font-semibold">Agapay</p>
           <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">
             Agapay is always here!
           </h1>
           <p className="mt-2 text-sm text-text-muted">
-            Create an account to start your impactful journey. Choose your role and get started in
-            minutes.
+            Tell us what your family needs and we will review your request. Follow it from
+            submission to distribution.
           </p>
           <div className="mt-6 aspect-[4/3] w-full overflow-hidden rounded-lg">
             <img
@@ -416,18 +424,35 @@ export function RequestAssistancePage() {
                       </button>
                     </p>
                   ) : null}
+                  <div className="mt-2">
+                    <label htmlFor="goods-filter" className="block text-sm font-medium">
+                      Find a good
+                    </label>
+                    <Input
+                      id="goods-filter"
+                      type="search"
+                      placeholder="Filter by name…"
+                      value={goodsFilter}
+                      onChange={(event) => setGoodsFilter(event.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  {visibleCatalog.length === 0 ? (
+                    <p role="status" className="mt-2 text-sm text-text-muted">
+                      No goods match that filter.
+                    </p>
+                  ) : null}
                   <div className="mt-2 space-y-2">
                     {CATEGORY_ORDER.filter((category) =>
-                      catalog.some((item) => item.category === category),
-                    ).map((category, groupIndex) => {
-                      const group = catalog.filter((item) => item.category === category);
+                      visibleCatalog.some((item) => item.category === category),
+                    ).map((category) => {
+                      const group = visibleCatalog.filter((item) => item.category === category);
                       const selected = group.filter(
                         (item) => picks[item.id]?.checked === true,
                       ).length;
                       return (
                         <details
                           key={category}
-                          open={groupIndex === 0}
                           className="rounded-md border border-border px-3 py-2"
                         >
                           <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium [&::-webkit-details-marker]:hidden">

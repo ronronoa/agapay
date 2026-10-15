@@ -32,11 +32,11 @@ describe('DashboardShell', () => {
 
   it('labels the not-yet-built topbar controls instead of faking them', () => {
     renderShell();
-    expect(
-      screen.getByText('Dashboard search, alerts, and printing arrive in a later release.'),
-    ).toBeInTheDocument();
     const search = screen.getByPlaceholderText('Search…');
     expect(search).toBeDisabled();
+    expect(search).toHaveAttribute('title', 'Dashboard search arrives in a later release');
+    expect(screen.getByRole('button', { name: 'Print report' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /alerts/i })).toBeDisabled();
   });
 
   it('marks the active section without colour alone', () => {

@@ -144,9 +144,6 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
               </div>
             )}
           </div>
-          <p className="mx-auto w-full max-w-6xl px-4 pb-2 text-xs text-text-muted">
-            Dashboard search, alerts, and printing arrive in a later release.
-          </p>
         </header>
 
         <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">

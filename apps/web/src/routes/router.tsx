@@ -63,6 +63,37 @@ const router = createBrowserRouter([
   { path: 'forgot-password', element: <ForgotPasswordPage /> },
   { path: 'reset-password', element: <ResetPasswordPage /> },
 
+  // The donor application runs on its own shell (sidebar plus dashboard
+  // header), so it must sit outside the public AppShell: nesting it made the
+  // sidebar render inside the public max-w-6xl container with a second
+  // header, footer, and sign-out on top of it.
+  {
+    path: 'donate',
+    element: (
+      <AuthGate roles={['DONOR']}>
+        <DashboardShell items={DONOR_NAV_ITEMS}>
+          <DonatePage />
+        </DashboardShell>
+      </AuthGate>
+    ),
+  },
+  {
+    path: 'donor',
+    element: (
+      <AuthGate roles={['DONOR']}>
+        <DashboardShell items={DONOR_NAV_ITEMS} />
+      </AuthGate>
+    ),
+    children: [
+      { index: true, element: <DonorDashboardPage /> },
+      { path: 'activity', element: <DonorActivityPage /> },
+      { path: 'donations/:id', element: <DonorDonationDetailPage /> },
+      { path: 'campaign', element: <DonorCampaignPage /> },
+      { path: 'messages', element: <DonorMessagesPage /> },
+      { path: 'settings', element: <DonorSettingsPage /> },
+    ],
+  },
+
   {
     path: '/',
     element: <AppShell />,
@@ -74,34 +105,6 @@ const router = createBrowserRouter([
       { path: 'campaigns/:slug', element: <PublicCampaignDetailPage /> },
       { path: 'track', element: <TrackAssistancePage /> },
       { path: 'verify-request', element: <VerifyRequestPage /> },
-
-      // Donor
-      {
-        path: 'donate',
-        element: (
-          <AuthGate roles={['DONOR']}>
-            <DashboardShell items={DONOR_NAV_ITEMS}>
-              <DonatePage />
-            </DashboardShell>
-          </AuthGate>
-        ),
-      },
-      {
-        path: 'donor',
-        element: (
-          <AuthGate roles={['DONOR']}>
-            <DashboardShell items={DONOR_NAV_ITEMS} />
-          </AuthGate>
-        ),
-        children: [
-          { index: true, element: <DonorDashboardPage /> },
-          { path: 'activity', element: <DonorActivityPage /> },
-          { path: 'donations/:id', element: <DonorDonationDetailPage /> },
-          { path: 'campaign', element: <DonorCampaignPage /> },
-          { path: 'messages', element: <DonorMessagesPage /> },
-          { path: 'settings', element: <DonorSettingsPage /> },
-        ],
-      },
 
       // Admin
       {
