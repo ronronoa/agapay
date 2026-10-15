@@ -13,7 +13,7 @@
     "packages/shared"
   ],
   "scripts": {
-    "prepare": "husky",
+    "prepare": "node -e \"if (process.env.NODE_ENV !== 'production') require('child_process').execSync('husky', { stdio: 'inherit' })\"",
     "postinstall": "npm run build -w @agapay/shared",
     "build": "npm run build -w @agapay/shared && npm run build -w @agapay/api && npm run build -w @agapay/web",
     "dev": "npm run build -w @agapay/shared && concurrently -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
