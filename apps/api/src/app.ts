@@ -23,6 +23,7 @@ import { distributionsRouter } from './modules/distributions/distributions.route
 import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { notificationsRouter } from './modules/notifications/notification.routes.js';
+import { uploadRoot } from './modules/inventory/inventory.upload.js';
 
 export function createApp() {
   const app = express();
@@ -97,6 +98,12 @@ export function createApp() {
   app.use('/api/v1/dashboard', dashboardRouter);
   app.use('/api/v1/notifications/emails', notificationsRouter);
   app.use('/api/v1', healthRouter);
+
+  // Inventory display photos only: random unguessable names, no listing, no
+  // dotfiles. The root resolves per request so tests can isolate uploads.
+  app.use('/uploads', (req, res, next) => {
+    express.static(uploadRoot(), { index: false, dotfiles: 'deny' })(req, res, next);
+  });
 
   app.use(notFoundHandler);
   app.use(errorMiddleware);

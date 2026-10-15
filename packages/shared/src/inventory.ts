@@ -52,12 +52,15 @@ export const inventoryDtoSchema = z.object({
   reserved: z.number().int(),
   distributed: z.number().int(),
   total: z.number().int(),
+  imageUrl: z.string().nullable(),
   lowStockThreshold: z.number().int(),
   lowStock: z.boolean(),
   updatedAt: z.string(),
 });
 
 export type InventoryDto = z.infer<typeof inventoryDtoSchema>;
+
+export const inventoryResponseSchema = z.object({ data: inventoryDtoSchema });
 
 export const inventoryListResponseSchema = z.object({
   data: z.object({

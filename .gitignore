@@ -11,6 +11,9 @@ build/
 # Generated Prisma client
 apps/api/src/generated/
 
+# Local inventory-photo uploads (Phase 5); never commit user files.
+apps/api/uploads/
+
 # Environment — never commit real values (hard rule 14)
 .env
 .env.local

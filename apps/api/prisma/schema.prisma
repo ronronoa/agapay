@@ -313,6 +313,7 @@ model InventoryItem {
   available   Int      @default(0)
   reserved    Int      @default(0)
   distributed Int      @default(0)
+  imageUrl    String? // optional photo, served from /uploads (display-only)
   updatedAt   DateTime @updatedAt @db.Timestamptz(3)
 
   itemType ItemType @relation(fields: [itemTypeId], references: [id])

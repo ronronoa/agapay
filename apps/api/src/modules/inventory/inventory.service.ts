@@ -30,6 +30,7 @@ interface StockRow {
   available: number;
   reserved: number;
   distributed: number;
+  imageUrl: string | null;
   updatedAt: Date;
 }
 
@@ -46,6 +47,7 @@ function toDto(row: StockRow): InventoryDto {
     reserved: row.reserved,
     distributed: row.distributed,
     total,
+    imageUrl: row.imageUrl,
     lowStockThreshold: row.lowStockThreshold,
     lowStock: row.available <= row.lowStockThreshold,
     updatedAt: row.updatedAt.toISOString(),
@@ -64,6 +66,7 @@ function flatten(row: {
   available: number;
   reserved: number;
   distributed: number;
+  imageUrl: string | null;
   updatedAt: Date;
   itemType: { name: string; unit: string; lowStockThreshold: number };
   campaign: { name: string };
@@ -79,6 +82,7 @@ function flatten(row: {
     available: row.available,
     reserved: row.reserved,
     distributed: row.distributed,
+    imageUrl: row.imageUrl,
     updatedAt: row.updatedAt,
   };
 }
@@ -409,6 +413,29 @@ export async function getById(id: string): Promise<InventoryDto> {
   const row = await prisma.inventoryItem.findUnique({ where: { id }, include: stockInclude });
   if (row === null) throw notFound('Inventory item');
   return toDto(flatten(row));
+}
+
+// A photo is display-only: it never touches counters, so no movement row.
+// Returns the previous URL so the route can remove the replaced file.
+export async function setImage(
+  id: string,
+  imageUrl: string,
+  actor: AuthContext,
+): Promise<{ previousImageUrl: string | null; item: InventoryDto }> {
+  const existing = await prisma.inventoryItem.findUnique({
+    where: { id },
+    select: { id: true, imageUrl: true },
+  });
+  if (existing === null) throw notFound('Inventory item');
+
+  await prisma.inventoryItem.update({ where: { id }, data: { imageUrl } });
+  await writeAudit(prisma, actor, {
+    action: 'inventory.image',
+    entityType: 'InventoryItem',
+    entityId: id,
+    metadata: { replaced: existing.imageUrl !== null },
+  });
+  return { previousImageUrl: existing.imageUrl, item: await getById(id) };
 }
 
 export async function listMovements(

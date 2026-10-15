@@ -36,6 +36,7 @@ function row(overrides: Partial<InventoryDto> = {}): InventoryDto {
     total: 124,
     lowStockThreshold: 20,
     lowStock: false,
+    imageUrl: null,
     updatedAt: '2026-09-01T00:00:00.000Z',
     ...overrides,
   };
@@ -223,5 +224,77 @@ describe('InventoryPage', () => {
     renderPage();
     await screen.findAllByText('Food Packs');
     expect(screen.queryByRole('button', { name: 'Transfer' })).toBeNull();
+  });
+
+  it('shows the photo thumbnail when a row has one', async () => {
+    respondWith([row({ imageUrl: '/uploads/inventory/abc123.png' })]);
+    const { container } = renderPage();
+    await screen.findAllByText('Food Packs');
+    // Decorative alt keeps it out of the accessibility tree; check the DOM.
+    const img = container.querySelector('img');
+    expect(img?.getAttribute('src')).toContain('/uploads/inventory/abc123.png');
+  });
+
+  it('rejects a non-image file before uploading', async () => {
+    renderPage();
+    await screen.findAllByText('Food Packs');
+    fireEvent.click(screen.getByRole('button', { name: 'Photo' }));
+    const file = new File(['not a photo'], 'notes.txt', { type: 'text/plain' });
+    fireEvent.change(await screen.findByLabelText('Photo'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Upload photo' }));
+
+    expect(await screen.findByText('Photos must be PNG, JPG, or WEBP.')).toBeInTheDocument();
+    const uploaded = vi
+      .mocked(apiFetch)
+      .mock.calls.some(([path, options]) => path.endsWith('/image') && options?.method === 'POST');
+    expect(uploaded).toBe(false);
+  });
+
+  it('uploads a photo for a row', async () => {
+    renderPage();
+    await screen.findAllByText('Food Packs');
+    fireEvent.click(screen.getByRole('button', { name: 'Photo' }));
+    const file = new File(['pixels'], 'rice.png', { type: 'image/png' });
+    fireEvent.change(await screen.findByLabelText('Photo'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Upload photo' }));
+
+    await waitFor(() => {
+      const uploaded = vi
+        .mocked(apiFetch)
+        .mock.calls.some(
+          ([path, options]) =>
+            path.endsWith('/inv-1/image') &&
+            options?.method === 'POST' &&
+            options?.body instanceof FormData,
+        );
+      expect(uploaded).toBe(true);
+    });
+    expect(await screen.findByText('Photo saved.')).toBeInTheDocument();
+  });
+
+  it('attaches a photo after adding supply', async () => {
+    renderPage();
+    await screen.findAllByText('Food Packs');
+    fireEvent.click(screen.getByRole('button', { name: 'Restock' }));
+    fireEvent.change(await screen.findByLabelText('Quantity'), { target: { value: '25' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New arrival.' } });
+    const file = new File(['pixels'], 'rice.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Item photo, optional'), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm supply' }));
+
+    await waitFor(() => {
+      const uploaded = vi
+        .mocked(apiFetch)
+        .mock.calls.some(
+          ([path, options]) =>
+            path.endsWith('/inv-1/image') &&
+            options?.method === 'POST' &&
+            options?.body instanceof FormData,
+        );
+      expect(uploaded).toBe(true);
+    });
+    expect(await screen.findByText('Stock added with photo.')).toBeInTheDocument();
   });
 });

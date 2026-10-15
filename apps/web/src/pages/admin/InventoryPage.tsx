@@ -3,6 +3,7 @@ import {
   campaignListResponseSchema,
   inventoryListResponseSchema,
   inventoryMovementListResponseSchema,
+  inventoryResponseSchema,
   itemTypeListResponseSchema,
   type InventoryDto,
 } from '@agapay/shared';
@@ -26,6 +27,9 @@ import { Label } from '../../components/ui/label';
 
 const PAGE_SIZE = 20;
 const MOVEMENT_PAGE_SIZE = 10;
+const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? '';
+const MAX_PHOTO_MB = 5;
+const PHOTO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 interface SupplyDraft {
   direction: 'IN' | 'OUT';
@@ -75,6 +79,22 @@ function actionFailureMessage(err: unknown): string {
   return err instanceof ApiClientError ? err.message : 'Action failed. Please try again.';
 }
 
+// Client-side pre-check only; the server re-validates type and size.
+function validatePhoto(file: File): string | null {
+  if (!PHOTO_TYPES.has(file.type)) return 'Photos must be PNG, JPG, or WEBP.';
+  if (file.size > MAX_PHOTO_MB * 1024 * 1024) return `Photos must be ${MAX_PHOTO_MB}MB or smaller.`;
+  return null;
+}
+
+function uploadPhoto(rowId: string, file: File): Promise<void> {
+  const form = new FormData();
+  form.append('image', file);
+  return apiFetch<unknown>(`/api/v1/inventory/${encodeURIComponent(rowId)}/image`, {
+    method: 'POST',
+    body: form,
+  }).then(() => undefined);
+}
+
 export function InventoryPage() {
   const user = useSyncExternalStore(subscribe, getUser, getUser);
   const isAdmin = user?.role === 'ADMIN';
@@ -86,6 +106,9 @@ export function InventoryPage() {
   const [movementPage, setMovementPage] = useState(1);
   const [supply, setSupply] = useState<SupplyDraft | null>(null);
   const [transfer, setTransfer] = useState<TransferDraft | null>(null);
+  const [supplyFile, setSupplyFile] = useState<File | null>(null);
+  const [photoRowId, setPhotoRowId] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -135,6 +158,7 @@ export function InventoryPage() {
   function openSupply(direction: 'IN' | 'OUT', row: InventoryDto | null): void {
     setFormError(null);
     setActionError(null);
+    setSupplyFile(null);
     setSupply({
       direction,
       rowId: row?.id ?? null,
@@ -143,6 +167,39 @@ export function InventoryPage() {
       quantity: '',
       reason: '',
     });
+  }
+
+  function openPhoto(row: InventoryDto): void {
+    setFormError(null);
+    setActionError(null);
+    setPhotoFile(null);
+    setPhotoRowId(row.id);
+  }
+
+  function submitPhoto(): void {
+    if (photoRowId === null || photoFile === null) {
+      setFormError('Choose a photo first.');
+      return;
+    }
+    const invalid = validatePhoto(photoFile);
+    if (invalid !== null) {
+      setFormError(invalid);
+      return;
+    }
+    const id = photoRowId;
+    const file = photoFile;
+    setActionError(null);
+    void uploadPhoto(id, file)
+      .then(() => {
+        setMessage('Photo saved.');
+        setPhotoRowId(null);
+        setPhotoFile(null);
+        query.refetch();
+        if (id === movementsId) movementsQuery.refetch();
+      })
+      .catch((err: unknown) => {
+        setActionError(actionFailureMessage(err));
+      });
   }
 
   function openTransfer(row: InventoryDto | null): void {
@@ -173,23 +230,73 @@ export function InventoryPage() {
       setFormError('Enter the reason for this stock change. Adjustments require a reason.');
       return;
     }
+    const file = supplyFile;
+    if (file !== null) {
+      const invalid = validatePhoto(file);
+      if (invalid !== null) {
+        setFormError(invalid);
+        return;
+      }
+    }
     const targetRowId = supply.rowId;
+    const direction = supply.direction;
+    const savedMessage = direction === 'IN' ? 'Stock added.' : 'Stock corrected.';
     setActionError(null);
-    void apiFetch('/api/v1/inventory/adjustments', {
+    void apiFetch<unknown>('/api/v1/inventory/adjustments', {
       method: 'POST',
       body: {
         itemTypeId: supply.itemTypeId,
         campaignId: supply.campaignId,
-        direction: supply.direction,
+        direction,
         quantity,
         reason: supply.reason.trim(),
       },
     })
-      .then(() => {
-        setMessage(supply.direction === 'IN' ? 'Stock added.' : 'Stock corrected.');
-        setSupply(null);
-        query.refetch();
-        if (targetRowId !== null && targetRowId === movementsId) movementsQuery.refetch();
+      .then((res) => {
+        // The photo goes up only after the stock row exists, so a failed
+        // adjustment can never orphan a file.
+        if (file === null) {
+          setMessage(savedMessage);
+          setSupply(null);
+          query.refetch();
+          if (targetRowId !== null && targetRowId === movementsId) movementsQuery.refetch();
+          return;
+        }
+        const parsed = inventoryResponseSchema.safeParse(res);
+        if (!parsed.success) {
+          setMessage(savedMessage);
+          setSupply(null);
+          setSupplyFile(null);
+          setActionError(
+            'The stock was saved, but the photo could not be attached. Use the row’s Photo action to retry.',
+          );
+          query.refetch();
+          return;
+        }
+        const createdId = parsed.data.data.id;
+        void uploadPhoto(createdId, file)
+          .then(() => {
+            setMessage(
+              direction === 'IN' ? 'Stock added with photo.' : 'Stock corrected with photo.',
+            );
+            setSupply(null);
+            setSupplyFile(null);
+            query.refetch();
+            if (createdId === movementsId) movementsQuery.refetch();
+          })
+          .catch((err: unknown) => {
+            // The stock landed; hand the same file to the Photo dialog for retry
+            // instead of re-submitting the adjustment and double-counting stock.
+            setMessage(savedMessage);
+            setSupply(null);
+            setSupplyFile(null);
+            setPhotoFile(file);
+            setPhotoRowId(createdId);
+            setActionError(
+              `The stock was saved, but the photo failed: ${actionFailureMessage(err)} You can retry it here.`,
+            );
+            query.refetch();
+          });
       })
       .catch((err: unknown) => {
         setActionError(actionFailureMessage(err));
@@ -252,7 +359,18 @@ export function InventoryPage() {
     {
       key: 'item',
       header: 'Goods',
-      render: (row) => <span className="font-medium">{row.itemTypeName}</span>,
+      render: (row) => (
+        <span className="flex items-center gap-2">
+          {row.imageUrl === null ? null : (
+            <img
+              src={`${API_BASE}${row.imageUrl}`}
+              alt=""
+              className="h-10 w-10 rounded-md object-cover"
+            />
+          )}
+          <span className="font-medium">{row.itemTypeName}</span>
+        </span>
+      ),
     },
     { key: 'campaign', header: 'Campaign', render: (row) => row.campaignName },
     { key: 'available', header: 'Available', render: (row) => String(row.available) },
@@ -277,6 +395,13 @@ export function InventoryPage() {
             className="font-medium text-primary underline underline-offset-4"
           >
             Movements
+          </button>
+          <button
+            type="button"
+            onClick={() => openPhoto(row)}
+            className="font-medium text-primary underline underline-offset-4"
+          >
+            Photo
           </button>
           <button
             type="button"
@@ -597,6 +722,18 @@ export function InventoryPage() {
                 className="mt-1 w-full rounded-md border border-input bg-surface px-3 py-2 text-sm"
               />
             </div>
+            <div>
+              <Label htmlFor="supply-photo">Item photo, optional</Label>
+              <Input
+                id="supply-photo"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => setSupplyFile(event.target.files?.[0] ?? null)}
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                PNG, JPG, or WEBP up to {MAX_PHOTO_MB}MB. Uploaded after the stock is saved.
+              </p>
+            </div>
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="accent">
@@ -609,6 +746,57 @@ export function InventoryPage() {
             </DialogFooter>
           </div>
         )}
+      </Dialog>
+
+      <Dialog
+        open={photoRowId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPhotoRowId(null);
+            setPhotoFile(null);
+            setFormError(null);
+            setActionError(null);
+          }
+        }}
+      >
+        <DialogTitle>Row photo</DialogTitle>
+        <DialogDescription>
+          PNG, JPG, or WEBP up to {MAX_PHOTO_MB}MB. Replacing a photo removes the old file.
+        </DialogDescription>
+        {actionError === null ? null : (
+          <p role="alert" className="mt-3 text-sm font-medium">
+            {actionError}
+          </p>
+        )}
+        {formError === null ? null : (
+          <p role="alert" className="mt-3 text-sm font-medium">
+            {formError}
+          </p>
+        )}
+        <div className="mt-4 space-y-3">
+          <div>
+            <Label htmlFor="row-photo">Photo</Label>
+            <Input
+              id="row-photo"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => setPhotoFile(event.target.files?.[0] ?? null)}
+            />
+          </div>
+          {photoFile === null ? null : (
+            <p className="text-sm text-text-muted">Selected: {photoFile.name}</p>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="accent">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button type="button" onClick={submitPhoto}>
+              Upload photo
+            </Button>
+          </DialogFooter>
+        </div>
       </Dialog>
 
       <Dialog

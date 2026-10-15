@@ -56,15 +56,18 @@ async function toApiError(response: Response): Promise<ApiClientError> {
 async function rawFetch(path: string, options: RequestOptions): Promise<Response> {
   const { body, headers, ...rest } = options;
   const token = getAccessToken();
+  // FormData carries files: it must reach fetch untouched, without a JSON
+  // content type, or the browser cannot set the multipart boundary.
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
 
   return fetch(`${API_BASE}${path}`, {
     ...rest,
     headers: {
-      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(body === undefined || isForm ? {} : { 'content-type': 'application/json' }),
       ...(token === null ? {} : { authorization: `Bearer ${token}` }),
       ...headers,
     },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    ...(body === undefined ? {} : { body: isForm ? (body as BodyInit) : JSON.stringify(body) }),
   });
 }
 

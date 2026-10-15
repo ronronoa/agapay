@@ -28,6 +28,11 @@ const envSchema = z
 
     TURNSTILE_SECRET: z.string().min(1).optional(),
 
+    // Local inventory-photo storage. Resolved against the API working directory;
+    // production on ephemeral disks needs a persistent volume or object storage.
+    UPLOAD_DIR: z.string().min(1).default('uploads'),
+    UPLOAD_MAX_IMAGE_MB: z.coerce.number().int().min(1).max(25).default(5),
+
     SEED_ADMIN_EMAIL: emailSchema.optional(),
     SEED_ADMIN_PASSWORD: passwordSchema.optional(),
   })
