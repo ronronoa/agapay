@@ -33,7 +33,10 @@ describe('RegisterPage', () => {
   it('follows the donor mockup with role toggle and confirm check', () => {
     renderWith(<RegisterPage />);
     expect(screen.getByText('Get started')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Beneficiary' })).toHaveAttribute('href', '/track');
+    expect(screen.getByRole('link', { name: 'Beneficiary' })).toHaveAttribute(
+      'href',
+      '/request-assistance',
+    );
     expect(screen.getByLabelText('Confirm Password')).toBeInTheDocument();
   });
 
@@ -77,9 +80,12 @@ describe('RegisterPage', () => {
 });
 
 describe('LoginPage', () => {
-  it('routes the beneficiary toggle at tracking, not a login', () => {
+  it('routes the beneficiary toggle at the assistance form, not a login', () => {
     renderWith(<LoginPage />);
-    expect(screen.getByRole('link', { name: 'Beneficiary' })).toHaveAttribute('href', '/track');
+    expect(screen.getByRole('link', { name: 'Beneficiary' })).toHaveAttribute(
+      'href',
+      '/request-assistance',
+    );
     expect(screen.getByRole('link', { name: 'Forgot Password?' })).toHaveAttribute(
       'href',
       '/forgot-password',
