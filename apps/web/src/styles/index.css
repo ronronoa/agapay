@@ -5,6 +5,8 @@
 @layer base {
   html {
     color-scheme: light;
+    /* Keep anchored sections clear of the sticky header. */
+    scroll-padding-top: 5rem;
   }
 
   body {

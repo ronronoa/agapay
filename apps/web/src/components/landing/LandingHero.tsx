@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
+import { useSyncExternalStore } from 'react';
 import { Heart } from 'lucide-react';
 import { publicStatsResponseSchema } from '@agapay/shared';
 import { useApiQuery } from '../../lib/use-api-query';
+import { getUser, subscribe } from '../../lib/session';
+import { donateTarget } from '../../lib/donate-target';
 import { AsyncBoundary } from '../ui/AsyncBoundary';
 
 const STATS = [
@@ -11,6 +14,7 @@ const STATS = [
 ] as const;
 
 export function LandingHero() {
+  const user = useSyncExternalStore(subscribe, getUser, getUser);
   const statsQuery = useApiQuery(
     ['public-stats'],
     '/api/v1/public/stats',
@@ -23,7 +27,7 @@ export function LandingHero() {
         <div className="space-y-6 lg:col-span-7 lg:pr-8">
           <p className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-1.5 text-sm font-medium text-text">
             <Heart className="h-4 w-4 text-primary" aria-hidden="true" />
-            Kapit-bisig, together
+            Tulong. Para sa lahat.
           </p>
           <h1
             id="hero-heading"
@@ -43,7 +47,7 @@ export function LandingHero() {
               Request Aid Now
             </Link>
             <Link
-              to="/campaigns"
+              to={donateTarget(user)}
               className="inline-flex min-h-12 items-center justify-center rounded-xs border-2 border-pine bg-transparent px-7 py-3 text-base font-semibold text-pine transition hover:bg-pine/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine"
             >
               Donate Goods

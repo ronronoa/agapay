@@ -96,7 +96,7 @@ export function LandingFooter() {
           </p>
           <div className="flex items-center gap-4 text-xs text-white/50">
             <Link
-              to="/about"
+              to="/privacy"
               className="hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
             >
               Privacy Policy

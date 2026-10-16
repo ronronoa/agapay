@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiClientError } from '../../lib/api-client';
 import { verifyRequestEmail } from '../../lib/public-api';
+import { LandingHeader } from '../../components/landing/LandingHeader';
+import { LandingFooter } from '../../components/landing/LandingFooter';
 import { PageHeader } from '../../components/layout/PageHeader';
 
 type VerifyState =
@@ -34,48 +36,58 @@ export function VerifyRequestPage() {
   }, [params]);
 
   return (
-    <div className="mx-auto w-full max-w-xl space-y-6">
-      <PageHeader
-        title="Confirm your email"
-        description="We are confirming the address on your assistance request."
-      />
+    <div className="min-h-screen bg-bg">
+      <LandingHeader />
+      <main className="mx-auto w-full max-w-xl px-4 py-10 sm:px-6">
+        <div className="space-y-6">
+          <PageHeader
+            title="Confirm your email"
+            description="We are confirming the address on your assistance request."
+          />
 
-      {state.kind === 'pending' ? (
-        <p role="status" className="text-sm text-text-muted">
-          Confirming…
-        </p>
-      ) : null}
+          {state.kind === 'pending' ? (
+            <p role="status" className="text-sm text-text-muted">
+              Confirming…
+            </p>
+          ) : null}
 
-      {state.kind === 'verified' ? (
-        <div className="rounded-lg border border-border bg-surface p-5 shadow-card">
-          <p className="font-medium">Email confirmed.</p>
-          <p className="mt-1 text-sm text-text-muted">
-            We can now reach you about your request. You can follow its progress any time.
-          </p>
-          <Link
-            to="/track"
-            className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-surface hover:bg-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            Track my request
-          </Link>
+          {state.kind === 'verified' ? (
+            <div className="rounded-lg border border-border bg-surface p-5 shadow-card">
+              <p className="font-medium">Email confirmed.</p>
+              <p className="mt-1 text-sm text-text-muted">
+                We can now reach you about your request. You can follow its progress any time.
+              </p>
+              <Link
+                to="/track"
+                className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-surface hover:bg-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Track my request
+              </Link>
+            </div>
+          ) : null}
+
+          {state.kind === 'invalid' ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-border bg-surface p-5 shadow-card"
+            >
+              <p className="font-medium">This link did not work.</p>
+              <p className="mt-1 text-sm text-text-muted">{state.message}</p>
+              <p className="mt-2 text-sm text-text-muted">
+                Links expire after a day. Submit a fresh request to receive a new confirmation
+                email.
+              </p>
+              <Link
+                to="/request-assistance"
+                className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Submit a new request
+              </Link>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-
-      {state.kind === 'invalid' ? (
-        <div role="alert" className="rounded-lg border border-border bg-surface p-5 shadow-card">
-          <p className="font-medium">This link did not work.</p>
-          <p className="mt-1 text-sm text-text-muted">{state.message}</p>
-          <p className="mt-2 text-sm text-text-muted">
-            Links expire after a day. Submit a fresh request to receive a new confirmation email.
-          </p>
-          <Link
-            to="/request-assistance"
-            className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            Submit a new request
-          </Link>
-        </div>
-      ) : null}
+      </main>
+      <LandingFooter />
     </div>
   );
 }

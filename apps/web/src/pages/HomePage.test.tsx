@@ -3,7 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import type * as ApiClientModule from '../lib/api-client';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import type { AuthUserDto } from '@agapay/shared';
+import { clearSession, setSession } from '../lib/session';
 import { HomePage } from './HomePage';
 import { apiFetch } from '../lib/api-client';
 
@@ -31,6 +33,23 @@ const stats = {
 
 let drives: unknown[] = [drive];
 
+function donor(): AuthUserDto {
+  return {
+    id: 'donor-1',
+    name: 'Dana Donor',
+    email: 'dana@example.com',
+    role: 'DONOR',
+    phone: null,
+    emailVerified: true,
+    isActive: true,
+    createdAt: '2026-09-01T00:00:00.000Z',
+  };
+}
+
+afterEach(() => {
+  clearSession();
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   drives = [drive];
@@ -40,12 +59,12 @@ beforeEach(() => {
   });
 });
 
-function renderHome(): ReturnType<typeof render> {
+function renderHome(entry = '/'): ReturnType<typeof render> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui: ReactElement = <HomePage />;
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>{ui}</MemoryRouter>
+      <MemoryRouter initialEntries={[entry]}>{ui}</MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -61,9 +80,32 @@ describe('HomePage', () => {
   it('links CTAs at live destinations only', () => {
     renderHome();
     const requestLink = screen.getByRole('link', { name: /request aid now/i });
-    const donateLink = screen.getByRole('link', { name: /donate goods/i });
     expect(requestLink).toHaveAttribute('href', '/request-assistance');
-    expect(donateLink).toHaveAttribute('href', '/campaigns');
+    // Header and hero share one rule: visitors register, donors donate.
+    for (const donateLink of screen.getAllByRole('link', { name: /donate goods/i })) {
+      expect(donateLink).toHaveAttribute('href', '/register');
+    }
+  });
+
+  it('sends signed-in donors straight to the donation form', () => {
+    setSession('token', donor());
+    renderHome();
+    for (const donateLink of screen.getAllByRole('link', { name: /donate goods/i })) {
+      expect(donateLink).toHaveAttribute('href', '/donate');
+    }
+  });
+
+  it('scrolls to a section when landing with a hash', async () => {
+    const calls: ScrollIntoViewOptions[] = [];
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: function (this: Element, options?: ScrollIntoViewOptions) {
+        calls.push(options ?? {});
+      },
+      configurable: true,
+    });
+    renderHome('/#impact');
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(calls[0]).toEqual({ behavior: 'smooth', block: 'start' });
   });
 
   it('renders the "What Agapay responds to" section with three cards', () => {

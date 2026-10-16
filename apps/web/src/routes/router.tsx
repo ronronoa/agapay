@@ -32,6 +32,7 @@ import { DashboardShell } from '../components/layout/DashboardShell';
 import { PublicCampaignDetailPage } from '../pages/public/PublicCampaignDetailPage';
 import { PublicCampaignsPage } from '../pages/public/PublicCampaignsPage';
 import { RequestAssistancePage } from '../pages/public/RequestAssistancePage';
+import { PrivacyPage } from '../pages/public/PrivacyPage';
 import { TrackAssistancePage } from '../pages/public/TrackAssistancePage';
 import { VerifyRequestPage } from '../pages/public/VerifyRequestPage';
 
@@ -56,6 +57,12 @@ const router = createBrowserRouter([
   // header plus split brand/form layout), so it lives outside the AppShell
   // like the landing page does.
   { path: 'request-assistance', element: <RequestAssistancePage /> },
+  { path: 'privacy', element: <PrivacyPage /> },
+
+  // Tracking pages share the landing header/footer with the rest of the
+  // public journey, so /track never shows a different site header.
+  { path: 'track', element: <TrackAssistancePage /> },
+  { path: 'verify-request', element: <VerifyRequestPage /> },
 
   // Auth screens follow the same standalone split layout as the beneficiary
   // form, so they live outside the AppShell too.
@@ -188,8 +195,6 @@ const router = createBrowserRouter([
       { path: 'how-it-works', element: <NotImplementedPage title="How It Works" /> },
       { path: 'campaigns', element: <PublicCampaignsPage /> },
       { path: 'campaigns/:slug', element: <PublicCampaignDetailPage /> },
-      { path: 'track', element: <TrackAssistancePage /> },
-      { path: 'verify-request', element: <VerifyRequestPage /> },
 
       { path: 'forbidden', element: <ForbiddenPage /> },
       { path: '*', element: <NotFoundPage /> },

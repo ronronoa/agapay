@@ -5,6 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { trackRequestSchema, type TrackRequestInput } from '@agapay/shared';
 import { ApiClientError } from '../../lib/api-client';
 import { trackAssistanceRequest } from '../../lib/public-api';
+import { LandingHeader } from '../../components/landing/LandingHeader';
+import { LandingFooter } from '../../components/landing/LandingFooter';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Field } from '../../components/ui/field';
@@ -49,106 +51,112 @@ export function TrackAssistancePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-xl space-y-6">
-      <PageHeader
-        title="Track your request"
-        description="Enter the code from your confirmation email together with the email address you registered with."
-      />
+    <div className="min-h-screen bg-bg">
+      <LandingHeader />
+      <main className="mx-auto w-full max-w-xl px-4 py-10 sm:px-6">
+        <div className="space-y-6">
+          <PageHeader
+            title="Track your request"
+            description="Enter the code from your confirmation email together with the email address you registered with."
+          />
 
-      <form
-        onSubmit={onLookup}
-        noValidate
-        className="space-y-4 rounded-lg border border-border bg-surface p-5 shadow-card"
-      >
-        <Field control={control} name="code" label="Tracking or reference code">
-          {(field) => (
-            <Input
-              id={field.id}
-              autoComplete="off"
-              placeholder="TRK-XXXX-XXXX or REQ-2026-000000"
-              value={typeof field.value === 'string' ? field.value : ''}
-              onChange={(event) => field.onChange(event.target.value)}
-              onBlur={field.onBlur}
-              aria-invalid={field.invalid}
-              aria-describedby={field.describedBy}
-            />
-          )}
-        </Field>
+          <form
+            onSubmit={onLookup}
+            noValidate
+            className="space-y-4 rounded-lg border border-border bg-surface p-5 shadow-card"
+          >
+            <Field control={control} name="code" label="Tracking or reference code">
+              {(field) => (
+                <Input
+                  id={field.id}
+                  autoComplete="off"
+                  placeholder="TRK-XXXX-XXXX or REQ-2026-000000"
+                  value={typeof field.value === 'string' ? field.value : ''}
+                  onChange={(event) => field.onChange(event.target.value)}
+                  onBlur={field.onBlur}
+                  aria-invalid={field.invalid}
+                  aria-describedby={field.describedBy}
+                />
+              )}
+            </Field>
 
-        <Field control={control} name="email" label="Email address">
-          {(field) => (
-            <Input
-              id={field.id}
-              type="email"
-              autoComplete="email"
-              placeholder="name@example.com"
-              value={typeof field.value === 'string' ? field.value : ''}
-              onChange={(event) => field.onChange(event.target.value)}
-              onBlur={field.onBlur}
-              aria-invalid={field.invalid}
-              aria-describedby={field.describedBy}
-            />
-          )}
-        </Field>
+            <Field control={control} name="email" label="Email address">
+              {(field) => (
+                <Input
+                  id={field.id}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="name@example.com"
+                  value={typeof field.value === 'string' ? field.value : ''}
+                  onChange={(event) => field.onChange(event.target.value)}
+                  onBlur={field.onBlur}
+                  aria-invalid={field.invalid}
+                  aria-describedby={field.describedBy}
+                />
+              )}
+            </Field>
 
-        {lookupError === null ? null : (
-          <p role="alert" className="text-sm font-medium">
-            {lookupError}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={lookingUp}
-          className="inline-flex min-h-[44px] w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {lookingUp ? 'Looking up…' : 'Track request'}
-        </button>
-      </form>
-
-      {result === null ? null : (
-        <section
-          aria-label="Request status"
-          className="space-y-4 rounded-lg border border-border bg-surface p-5 shadow-card"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-semibold">{result.campaign.name}</h2>
-            <StatusBadge label={result.status.replace(/_/g, ' ')} />
-          </div>
-          <p className="text-sm">{result.statusMessage}</p>
-          <p className="text-sm text-text-muted">
-            Submitted {formatDateTime(result.submittedAt)} · Code {result.code}
-          </p>
-
-          {result.rejectionReason === null ? null : (
-            <div>
-              <h3 className="text-sm font-semibold">Reason</h3>
-              <p className="mt-1 text-sm">{result.rejectionReason}</p>
-            </div>
-          )}
-
-          {result.distribution === null ? null : (
-            <div>
-              <h3 className="text-sm font-semibold">Pickup schedule</h3>
-              <p className="mt-1 text-sm">
-                {formatDateTime(result.distribution.startAt)} to{' '}
-                {formatDateTime(result.distribution.endAt)} · {result.distribution.location}
+            {lookupError === null ? null : (
+              <p role="alert" className="text-sm font-medium">
+                {lookupError}
               </p>
-            </div>
-          )}
+            )}
 
-          <div>
-            <h3 className="text-sm font-semibold">History</h3>
-            <ol className="mt-1 space-y-1">
-              {result.timeline.map((entry) => (
-                <li key={`${entry.status}-${entry.at}`} className="text-sm text-text-muted">
-                  {entry.status.replace(/_/g, ' ')} · {formatDateTime(entry.at)}
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-      )}
+            <button
+              type="submit"
+              disabled={lookingUp}
+              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {lookingUp ? 'Looking up…' : 'Track request'}
+            </button>
+          </form>
+
+          {result === null ? null : (
+            <section
+              aria-label="Request status"
+              className="space-y-4 rounded-lg border border-border bg-surface p-5 shadow-card"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-base font-semibold">{result.campaign.name}</h2>
+                <StatusBadge label={result.status.replace(/_/g, ' ')} />
+              </div>
+              <p className="text-sm">{result.statusMessage}</p>
+              <p className="text-sm text-text-muted">
+                Submitted {formatDateTime(result.submittedAt)} · Code {result.code}
+              </p>
+
+              {result.rejectionReason === null ? null : (
+                <div>
+                  <h3 className="text-sm font-semibold">Reason</h3>
+                  <p className="mt-1 text-sm">{result.rejectionReason}</p>
+                </div>
+              )}
+
+              {result.distribution === null ? null : (
+                <div>
+                  <h3 className="text-sm font-semibold">Pickup schedule</h3>
+                  <p className="mt-1 text-sm">
+                    {formatDateTime(result.distribution.startAt)} to{' '}
+                    {formatDateTime(result.distribution.endAt)} · {result.distribution.location}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <h3 className="text-sm font-semibold">History</h3>
+                <ol className="mt-1 space-y-1">
+                  {result.timeline.map((entry) => (
+                    <li key={`${entry.status}-${entry.at}`} className="text-sm text-text-muted">
+                      {entry.status.replace(/_/g, ' ')} · {formatDateTime(entry.at)}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </section>
+          )}
+        </div>
+      </main>
+      <LandingFooter />
     </div>
   );
 }

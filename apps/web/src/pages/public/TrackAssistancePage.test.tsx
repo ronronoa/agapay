@@ -48,6 +48,14 @@ function renderPage(): ReturnType<typeof render> {
 }
 
 describe('TrackAssistancePage', () => {
+  it('uses the same landing header as the rest of the public journey', () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Take Action' }));
+    const menu = screen.getByRole('menu', { name: 'Take action' });
+    expect(menu.textContent ?? '').toContain('Donate Goods');
+    expect(menu.textContent ?? '').toContain('Track Assistance');
+  });
+
   it('shows status, timeline, and pickup schedule for a match', async () => {
     vi.mocked(apiFetch).mockResolvedValue(found);
     renderPage();

@@ -68,48 +68,99 @@ function renderPage(): ReturnType<typeof render> {
   );
 }
 
-function fillValidForm(): void {
-  fireEvent.change(screen.getByLabelText('Relief campaign'), {
-    target: { value: campaign.id },
-  });
-  fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'Maria Santos' } });
-  fireEvent.change(screen.getByLabelText('Email Address'), {
+function fillStepOne(): void {
+  fireEvent.change(screen.getByLabelText('Full name *'), { target: { value: 'Maria Santos' } });
+  fireEvent.change(screen.getByLabelText('Email address *'), {
     target: { value: 'maria@example.com' },
   });
-  fireEvent.change(screen.getByLabelText('Contact Number'), { target: { value: '9171234567' } });
-  fireEvent.change(screen.getByLabelText('Barangay'), { target: { value: 'San Isidro' } });
-  fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Quezon City' } });
-  fireEvent.change(screen.getByLabelText('Province'), { target: { value: 'Metro Manila' } });
+  fireEvent.change(screen.getByLabelText('Mobile number *'), { target: { value: '9171234567' } });
+  fireEvent.change(screen.getByLabelText('Barangay *'), { target: { value: 'San Isidro' } });
+  fireEvent.change(screen.getByLabelText('City or municipality *'), {
+    target: { value: 'Quezon City' },
+  });
+  fireEvent.change(screen.getByLabelText('Province *'), { target: { value: 'Metro Manila' } });
+}
+
+function fillStepTwo(): void {
+  fireEvent.change(screen.getByLabelText('Relief campaign *'), {
+    target: { value: campaign.id },
+  });
   fireEvent.click(screen.getByRole('checkbox', { name: /Food Pack/ }));
-  fireEvent.click(screen.getByRole('checkbox', { name: /I consent/ }));
 }
 
 describe('RequestAssistancePage', () => {
-  it('renders the beneficiary form from the approved mockup', async () => {
+  it('opens on personal information with a progress indicator and no role toggle', () => {
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
-    );
-    expect(screen.getByText('Register to request assistance')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Submit for Verification' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Have Already Submitted' })).toHaveAttribute(
+    expect(screen.getByText('Request relief assistance')).toBeInTheDocument();
+    expect(screen.getByLabelText('Step 1 of 3: Your information')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Continue to assistance needs →' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Choose a role' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Register to donate goods' })).toHaveAttribute(
       'href',
-      '/track',
+      '/register',
     );
+    expect(screen.getByRole('link', { name: 'Privacy Notice' })).toHaveAttribute(
+      'href',
+      '/privacy',
+    );
+  });
+
+  it('blocks Continue on step one until the personal details are valid', async () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText('Full name *'), { target: { value: 'Maria Santos' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+
+    await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0));
+    expect(screen.queryByLabelText('Relief campaign *')).toBeNull();
+  });
+
+  it('moves to assistance needs and keeps entries when going back', async () => {
+    renderPage();
+    fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
+    expect(screen.getByLabelText('Step 2 of 3: Assistance needs')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '← Back' }));
+    await waitFor(() => expect(screen.getByLabelText('Full name *')).toBeInTheDocument());
+    expect(screen.getByLabelText('Full name *')).toHaveValue('Maria Santos');
+    expect(screen.getByLabelText('Email address *')).toHaveValue('maria@example.com');
   });
 
   it('shows cap hints from the goods catalogue', async () => {
     renderPage();
+    fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
     await waitFor(() => expect(screen.getByText('Up to 5 per request')).toBeInTheDocument());
+  });
+
+  it('reviews details with edit actions before submitting', async () => {
+    renderPage();
+    fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+    await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
+    fillStepTwo();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to review →' }));
+
+    await waitFor(() => expect(screen.getByText('Check your details')).toBeInTheDocument());
+    expect(screen.getByText('Maria Santos')).toBeInTheDocument();
+    expect(screen.getByText(/Typhoon Amihan/)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Submit assistance request' })).toBeInTheDocument();
   });
 
   it('blocks submit until consent is checked without calling the API', async () => {
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
-    );
-    fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'Maria Santos' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Submit for Verification' }));
+    fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+    await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
+    fillStepTwo();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to review →' }));
+    await waitFor(() => expect(screen.getByText('Check your details')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Submit assistance request' }));
 
     await waitFor(() => expect(screen.getByText(/Consent is required/)).toBeInTheDocument());
     const posts = vi
@@ -120,21 +171,27 @@ describe('RequestAssistancePage', () => {
     expect(posts).toHaveLength(0);
   });
 
-  it('shows the reference number after a successful submit', async () => {
+  it('shows the reference number with copy and tracking after submit', async () => {
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
-    );
-    fillValidForm();
+    fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+    await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
+    fillStepTwo();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to review →' }));
+    await waitFor(() => expect(screen.getByText('Check your details')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: /I consent/ }));
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       if (path === '/api/v1/public/assistance-requests') {
         return Promise.resolve({ data: { referenceNumber: 'REQ-2026-004281', status: 'PENDING' } });
       }
       return Promise.resolve(mockGet(path));
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Submit for Verification' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit assistance request' }));
 
     await waitFor(() => expect(screen.getByText('REQ-2026-004281')).toBeInTheDocument());
+    expect(screen.getByText(/awaiting review/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy reference' }));
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Track my request' })).toHaveAttribute(
       'href',
       '/track',
@@ -143,10 +200,13 @@ describe('RequestAssistancePage', () => {
 
   it('points duplicate submissions at the tracking page', async () => {
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
-    );
-    fillValidForm();
+    fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+    await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
+    fillStepTwo();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to review →' }));
+    await waitFor(() => expect(screen.getByText('Check your details')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: /I consent/ }));
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       if (path === '/api/v1/public/assistance-requests') {
         return Promise.reject(
@@ -161,34 +221,24 @@ describe('RequestAssistancePage', () => {
       }
       return Promise.resolve(mockGet(path));
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Submit for Verification' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit assistance request' }));
 
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Go to the tracking page' })).toBeInTheDocument(),
     );
   });
 
-  it('groups goods by category with counts', async () => {
-    const { container } = renderPage();
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
-    );
-    const summaries = [...container.querySelectorAll('summary')].map(
-      (node) => node.textContent ?? '',
-    );
-    expect(summaries.some((text) => text.includes('Food'))).toBe(true);
-    expect(summaries.some((text) => text.includes('Water'))).toBe(true);
-    expect(summaries.some((text) => text.includes('1 good'))).toBe(true);
-  });
-
   it('submits selections from collapsed groups', async () => {
     const { container } = renderPage();
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
-    );
-    fillValidForm();
+    fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+    await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
+    fillStepTwo();
     container.querySelectorAll('details').forEach((group) => group.setAttribute('open', ''));
     fireEvent.click(screen.getByRole('checkbox', { name: /Drinking Water/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to review →' }));
+    await waitFor(() => expect(screen.getByText('Check your details')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: /I consent/ }));
     let submitted: unknown = null;
     vi.mocked(apiFetch).mockImplementation((path: string, options?: { body?: unknown }) => {
       if (path === '/api/v1/public/assistance-requests') {
@@ -197,7 +247,7 @@ describe('RequestAssistancePage', () => {
       }
       return Promise.resolve(mockGet(path));
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Submit for Verification' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit assistance request' }));
 
     await waitFor(() => expect(screen.getByText('REQ-2026-004282')).toBeInTheDocument());
     const body = submitted as { items?: { itemTypeId?: string }[] } | null;
@@ -207,9 +257,9 @@ describe('RequestAssistancePage', () => {
 
   it('starts every goods group collapsed and narrows them with the filter', async () => {
     const { container } = renderPage();
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /Typhoon Amihan/ })).toBeInTheDocument(),
-    );
+    fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+    await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
     const groups = [...container.querySelectorAll('details')];
     expect(groups.length).toBeGreaterThan(0);
     expect(groups.every((group) => !group.open)).toBe(true);
