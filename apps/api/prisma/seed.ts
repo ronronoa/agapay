@@ -69,6 +69,28 @@ async function seedAdmin() {
   return true;
 }
 
+async function seedStaffDemo(): Promise<boolean> {
+  const email = env.SEED_STAFF_EMAIL;
+  const password = env.SEED_STAFF_PASSWORD;
+  if (email === undefined || password === undefined) return false;
+
+  // Same pattern as the admin bootstrap: re-hashed each run, verified, active.
+  const passwordHash = await hashPassword(password);
+  await prisma.user.upsert({
+    where: { email },
+    update: { passwordHash, role: 'STAFF', isActive: true },
+    create: {
+      name: 'Demo Staff',
+      email,
+      passwordHash,
+      role: 'STAFF',
+      isActive: true,
+      emailVerifiedAt: new Date(),
+    },
+  });
+  return true;
+}
+
 async function main() {
   const seedDemo = process.env.SEED_DEMO === 'true';
   if (seedDemo && process.env.NODE_ENV === 'production') {
@@ -78,12 +100,16 @@ async function main() {
   await seedGeneralPool();
   await seedItemTypes();
   const seededAdmin = await seedAdmin();
+  const seededStaff = seedDemo ? await seedStaffDemo() : false;
 
   // TODO(M5): SEED_DEMO block — demo campaign, donors, donations, requests, and
   // opening stock, so UAT screens are not empty.
 
   console.log('Seed complete: General Pool campaign, item types.');
   console.log(seededAdmin ? 'Bootstrap admin ensured from env.' : 'No bootstrap admin configured.');
+  if (seedDemo) {
+    console.log(seededStaff ? 'Demo staff ensured from env.' : 'No demo staff configured.');
+  }
 }
 
 main()

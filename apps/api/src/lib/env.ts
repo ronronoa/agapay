@@ -35,6 +35,8 @@ const envSchema = z
 
     SEED_ADMIN_EMAIL: emailSchema.optional(),
     SEED_ADMIN_PASSWORD: passwordSchema.optional(),
+    SEED_STAFF_EMAIL: emailSchema.optional(),
+    SEED_STAFF_PASSWORD: passwordSchema.optional(),
   })
   // Cross-field check: selecting a real provider without its credential would
   // otherwise fail later, inside a worker, at 3am.
@@ -53,6 +55,14 @@ const envSchema = z
     {
       message: 'SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD must be set together',
       path: ['SEED_ADMIN_PASSWORD'],
+    },
+  )
+  // Same both-or-neither rule for the demo staff account.
+  .refine(
+    (value) => (value.SEED_STAFF_EMAIL === undefined) === (value.SEED_STAFF_PASSWORD === undefined),
+    {
+      message: 'SEED_STAFF_EMAIL and SEED_STAFF_PASSWORD must be set together',
+      path: ['SEED_STAFF_PASSWORD'],
     },
   );
 
