@@ -12,6 +12,9 @@ export interface DashboardNavItem {
   icon?: LucideIcon | undefined;
   end?: boolean | undefined;
   badge?: number | undefined;
+  // Omitted = every signed-in role. Set to hide sections a role may not open,
+  // so the nav never offers a link that ends at the forbidden page.
+  roles?: readonly string[] | undefined;
 }
 
 interface DashboardShellProps {
@@ -69,26 +72,32 @@ function SidebarBody({ items, user, onNavigate }: SidebarBodyProps) {
       </div>
 
       <nav aria-label="Dashboard" className="flex flex-1 flex-col gap-1 px-3">
-        {items.map((item) => {
-          const Icon: LucideIcon | undefined = item.icon;
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              {...(item.end === true ? { end: true as const } : {})}
-              {...closeProps}
-              className={({ isActive }) => navClass(isActive)}
-            >
-              {Icon === undefined ? null : <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />}
-              <span className="truncate">{item.label}</span>
-              {item.badge === undefined ? null : (
-                <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">
-                  {item.badge}
-                </span>
-              )}
-            </NavLink>
-          );
-        })}
+        {items
+          .filter(
+            (item) => item.roles === undefined || (user !== null && item.roles.includes(user.role)),
+          )
+          .map((item) => {
+            const Icon: LucideIcon | undefined = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                {...(item.end === true ? { end: true as const } : {})}
+                {...closeProps}
+                className={({ isActive }) => navClass(isActive)}
+              >
+                {Icon === undefined ? null : (
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                )}
+                <span className="truncate">{item.label}</span>
+                {item.badge === undefined ? null : (
+                  <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">
+                    {item.badge}
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
       </nav>
 
       <div className="p-3">

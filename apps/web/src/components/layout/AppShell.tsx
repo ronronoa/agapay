@@ -11,16 +11,23 @@ const NAV_ITEMS = [
 ] as const;
 
 // Shown only to signed-in staff, so the public header stays unchanged for
-// visitors and donors.
-const ADMIN_NAV_ITEMS = [
+// visitors and donors. Items with roles stay invisible to roles that may not
+// open them (Users is ADMIN-only), matching the sidebar behaviour.
+interface AdminNavItem {
+  to: string;
+  label: string;
+  roles?: readonly string[] | undefined;
+}
+
+const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { to: '/admin/campaigns', label: 'Campaigns' },
   { to: '/admin/donations', label: 'Donations' },
   { to: '/admin/requests', label: 'Requests' },
   { to: '/admin/inventory', label: 'Inventory' },
   { to: '/admin/item-types', label: 'Item Types' },
-  { to: '/admin/users', label: 'Users' },
+  { to: '/admin/users', label: 'Users', roles: ['ADMIN'] },
   { to: '/admin/audit-logs', label: 'Audit Log' },
-] as const;
+];
 
 function navLinkClass({ isActive }: { isActive: boolean }): string {
   return isActive
@@ -60,7 +67,10 @@ export function AppShell() {
               aria-label="Administration"
               className="flex flex-wrap items-center gap-x-5 gap-y-2"
             >
-              {ADMIN_NAV_ITEMS.map((item) => (
+              {ADMIN_NAV_ITEMS.filter(
+                (item) =>
+                  item.roles === undefined || (user !== null && item.roles.includes(user.role)),
+              ).map((item) => (
                 <NavLink key={item.to} to={item.to} className={navLinkClass}>
                   {item.label}
                 </NavLink>

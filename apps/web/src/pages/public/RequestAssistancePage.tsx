@@ -119,8 +119,6 @@ export function RequestAssistancePage() {
 
   const campaigns = campaignsQuery.data?.data.items ?? [];
   const catalog = itemsQuery.data?.data.items ?? [];
-  // shortcut: matches only the goods already loaded — the public endpoint caps
-  // pageSize at 100 and takes no q= search, so a larger catalogue needs one.
   const filterQuery = goodsFilter.trim().toLowerCase();
   const visibleCatalog =
     filterQuery.length === 0
@@ -213,7 +211,7 @@ export function RequestAssistancePage() {
             Tell us what your family needs and we will review your request. Follow it from
             submission to distribution.
           </p>
-          <div className="mt-6 aspect-[4/3] w-full overflow-hidden rounded-lg">
+          <div className="mt-6 aspect-4/3 w-full overflow-hidden rounded-lg">
             <img
               src="/images/hero-child.png"
               alt="Children saying grace before a relief meal"
@@ -251,13 +249,13 @@ export function RequestAssistancePage() {
                 >
                   <Link
                     to="/login"
-                    className="inline-flex min-h-[44px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Donor
                   </Link>
                   <span
                     aria-current="true"
-                    className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-gray-300 bg-surface px-4 py-2 text-sm font-semibold shadow-xl"
+                    className="inline-flex min-h-11 items-center justify-center rounded-md border border-gray-300 bg-surface px-4 py-2 text-sm font-semibold shadow-xl"
                   >
                     Beneficiary
                   </span>
@@ -455,7 +453,7 @@ export function RequestAssistancePage() {
                           key={category}
                           className="rounded-md border border-border px-3 py-2"
                         >
-                          <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
                             {categoryLabel(category)}{' '}
                             <span className="font-normal text-text-muted">
                               {selected > 0
@@ -476,7 +474,7 @@ export function RequestAssistancePage() {
                                   key={item.id}
                                   className="border-t border-border px-1 py-2 first:border-t-0"
                                 >
-                                  <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-sm">
+                                  <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
                                     <input
                                       type="checkbox"
                                       checked={pick.checked}
@@ -607,14 +605,14 @@ export function RequestAssistancePage() {
                 <div className="mt-6 flex flex-wrap gap-3">
                   <Link
                     to="/track"
-                    className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="inline-flex min-h-11 items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Have Already Submitted
                   </Link>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {isSubmitting ? 'Submitting…' : 'Submit for Verification'}
                   </button>
@@ -641,13 +639,13 @@ export function RequestAssistancePage() {
                 <div className="mt-6 flex flex-wrap gap-3">
                   <Link
                     to="/track"
-                    className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Track my request
                   </Link>
                   <Link
                     to="/"
-                    className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="inline-flex min-h-11 items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     Back home
                   </Link>

@@ -1,7 +1,9 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import type { ReactElement } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, afterEach } from 'vitest';
+import type { AuthUserDto } from '@agapay/shared';
+import { clearSession, setSession } from '../../lib/session';
 import { DashboardShell, type DashboardNavItem } from './DashboardShell';
 
 const ITEMS: readonly DashboardNavItem[] = [
@@ -9,9 +11,34 @@ const ITEMS: readonly DashboardNavItem[] = [
   { to: '/donor/activity', label: 'Activity' },
 ];
 
-function renderShell(handle?: { shellTitle: string }): ReturnType<typeof render> {
+const ROLE_ITEMS: readonly DashboardNavItem[] = [
+  ...ITEMS,
+  { to: '/admin/users', label: 'Donor', roles: ['ADMIN'] },
+];
+
+function staffer(): AuthUserDto {
+  return {
+    id: 'staff-1',
+    name: 'Sam Staff',
+    email: 'staff@example.com',
+    role: 'STAFF',
+    phone: null,
+    emailVerified: true,
+    isActive: true,
+    createdAt: '2026-09-01T00:00:00.000Z',
+  };
+}
+
+afterEach(() => {
+  clearSession();
+});
+
+function renderShell(
+  handle?: { shellTitle: string },
+  items: readonly DashboardNavItem[] = ITEMS,
+): ReturnType<typeof render> {
   const ui: ReactElement = (
-    <DashboardShell items={ITEMS}>
+    <DashboardShell items={items}>
       <p>Child content</p>
     </DashboardShell>
   );
@@ -59,5 +86,18 @@ describe('DashboardShell', () => {
     renderShell({ shellTitle: 'Dashboard' });
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Search…')).toBeNull();
+  });
+
+  it('hides role-restricted sections from unauthorized roles', () => {
+    setSession('token', staffer());
+    renderShell(undefined, ROLE_ITEMS);
+    expect(screen.queryByRole('link', { name: 'Donor' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Activity' })).toBeInTheDocument();
+  });
+
+  it('shows role-restricted sections to authorized roles', () => {
+    setSession('token', { ...staffer(), role: 'ADMIN' });
+    renderShell(undefined, ROLE_ITEMS);
+    expect(screen.getByRole('link', { name: 'Donor' })).toHaveAttribute('href', '/admin/users');
   });
 });

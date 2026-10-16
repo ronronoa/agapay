@@ -20,7 +20,8 @@ type AdminNavItem = DashboardNavItem & { badgeKey?: 'pendingRequests' | undefine
 
 const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/admin/users', label: 'Donor', icon: Users },
+  // The Users page is ADMIN-only (AuthGate + API), so staff never see it.
+  { to: '/admin/users', label: 'Donor', icon: Users, roles: ['ADMIN'] },
   { to: '/admin/requests', label: 'Beneficiary', icon: UserRound, badgeKey: 'pendingRequests' },
   { to: '/admin/inventory', label: 'Inventory', icon: Package },
   { to: '/admin/campaigns', label: 'Campaign', icon: Megaphone },
@@ -40,9 +41,14 @@ export function AdminShell({ children }: { children?: ReactNode }) {
   );
   const items: DashboardNavItem[] = ADMIN_NAV_ITEMS.map((item) => {
     const badge = item.badgeKey === undefined ? undefined : pending.data?.data.total;
-    return badge === undefined
-      ? { to: item.to, label: item.label, icon: item.icon, end: item.end }
-      : { to: item.to, label: item.label, icon: item.icon, end: item.end, badge };
+    return {
+      to: item.to,
+      label: item.label,
+      icon: item.icon,
+      end: item.end,
+      roles: item.roles,
+      ...(badge === undefined ? {} : { badge }),
+    };
   });
 
   return <DashboardShell items={items}>{children}</DashboardShell>;
