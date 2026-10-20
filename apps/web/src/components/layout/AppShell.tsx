@@ -1,7 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { getUser, subscribe } from '../../lib/session';
 import { logout } from '../../lib/auth-api';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 const NAV_ITEMS = [
   { to: '/about', label: 'About' },
@@ -38,6 +39,7 @@ function navLinkClass({ isActive }: { isActive: boolean }): string {
 export function AppShell() {
   const user = useSyncExternalStore(subscribe, getUser, getUser);
   const isStaff = user !== null && (user.role === 'ADMIN' || user.role === 'STAFF');
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -105,7 +107,7 @@ export function AppShell() {
                 <span className="text-sm text-text-muted">{user.name}</span>
                 <button
                   type="button"
-                  onClick={() => void logout()}
+                  onClick={() => setConfirmingLogout(true)}
                   className="inline-flex items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt"
                 >
                   Sign out
@@ -127,6 +129,19 @@ export function AppShell() {
               unverifiable is published here on purpose (hard rule 12). */}
         </div>
       </footer>
+
+      <ConfirmDialog
+        open={confirmingLogout}
+        title="Sign out?"
+        description="You will need to sign in again to continue."
+        confirmLabel="Sign out"
+        cancelLabel="Stay signed in"
+        onCancel={() => setConfirmingLogout(false)}
+        onConfirm={() => {
+          setConfirmingLogout(false);
+          void logout();
+        }}
+      />
     </div>
   );
 }

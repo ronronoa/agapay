@@ -36,7 +36,7 @@ export function HomePage({ isLoading = false }: HomePageProps) {
   return (
     <>
       <LandingHeader />
-      <main id="main">
+      <main id="top">
         <div className="fixed bottom-6 right-6">
           <button
             type="button"

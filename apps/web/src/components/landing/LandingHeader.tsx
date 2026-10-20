@@ -5,6 +5,7 @@ import { getUser, subscribe } from '../../lib/session';
 import { donateTarget } from '../../lib/donate-target';
 import { logout } from '../../lib/auth-api';
 import { Dialog, DialogTitle } from '../ui/dialog';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface MenuItem {
   to?: string | undefined;
@@ -68,12 +69,15 @@ export function LandingHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
   const actionsButtonRef = useRef<HTMLButtonElement>(null);
 
   const donateTo = donateTarget(user);
   const menuItems: MenuItem[] = [
-    { to: '/', label: 'Home' },
+    // Home carries both a route and a section hash: from elsewhere it
+    // navigates here, and on this page it scrolls back to the top.
+    { to: '/#top', href: '#top', label: 'Home' },
     { href: '#impact', label: 'Impact' },
     { href: '#about', label: 'About Us' },
     { to: donateTo, label: 'Donate Goods' },
@@ -140,7 +144,10 @@ export function LandingHeader() {
 
         <div className="flex space-x-10">
           <nav aria-label="Main navigation" className="hidden items-center gap-8 md:flex">
-            <MenuLink item={{ to: '/', label: 'Home' }} className={desktopLinkClass} />
+            <MenuLink
+              item={{ to: '/#top', href: '#top', label: 'Home' }}
+              className={desktopLinkClass}
+            />
             <MenuLink item={{ href: '#impact', label: 'Impact' }} className={desktopLinkClass} />
             <MenuLink item={{ href: '#about', label: 'About Us' }} className={desktopLinkClass} />
             <div ref={actionsRef} className="relative" onKeyDown={onActionsKeyDown}>
@@ -232,7 +239,7 @@ export function LandingHeader() {
                 <span className="text-sm text-white/90">{user.name}</span>
                 <button
                   type="button"
-                  onClick={() => void logout()}
+                  onClick={() => setConfirmingLogout(true)}
                   className="inline-flex min-h-11 items-center justify-center rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                 >
                   Sign out
@@ -255,6 +262,19 @@ export function LandingHeader() {
           ))}
         </nav>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmingLogout}
+        title="Sign out?"
+        description="You will need to sign in again to continue."
+        confirmLabel="Sign out"
+        cancelLabel="Stay signed in"
+        onCancel={() => setConfirmingLogout(false)}
+        onConfirm={() => {
+          setConfirmingLogout(false);
+          void logout();
+        }}
+      />
     </header>
   );
 }

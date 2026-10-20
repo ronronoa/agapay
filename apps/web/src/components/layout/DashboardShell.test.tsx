@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { describe, expect, it, afterEach } from 'vitest';
@@ -99,5 +99,18 @@ describe('DashboardShell', () => {
     setSession('token', { ...staffer(), role: 'ADMIN' });
     renderShell(undefined, ROLE_ITEMS);
     expect(screen.getByRole('link', { name: 'Donor' })).toHaveAttribute('href', '/admin/users');
+  });
+});
+
+describe('DashboardShell logout confirmation', () => {
+  it('asks before ending the session', async () => {
+    setSession('token', staffer());
+    renderShell();
+    expect(screen.queryByText('Log out?')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+    expect(await screen.findByText('Log out?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stay signed in' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Stay signed in' }));
+    await waitFor(() => expect(screen.queryByText('Log out?')).toBeNull());
   });
 });

@@ -132,6 +132,29 @@ export async function getBySlug(slug: string): Promise<CampaignDto> {
   return toDto(row);
 }
 
+// A cover image is display-only: no counters change and no email is queued.
+// Returns the previous URL so the route can remove the replaced file.
+export async function setCoverImage(
+  id: string,
+  imageUrl: string,
+  actor: AuthContext,
+): Promise<{ previousImageUrl: string | null; campaign: CampaignDto }> {
+  const existing = await prisma.campaign.findUnique({
+    where: { id },
+    select: { id: true, coverImageUrl: true },
+  });
+  if (existing === null) throw notFound('Campaign');
+
+  await prisma.campaign.update({ where: { id }, data: { coverImageUrl: imageUrl } });
+  await writeAudit(prisma, actor, {
+    action: 'campaign.image',
+    entityType: 'Campaign',
+    entityId: id,
+    metadata: { replaced: existing.coverImageUrl !== null },
+  });
+  return { previousImageUrl: existing.coverImageUrl, campaign: await getById(id) };
+}
+
 export async function create(
   input: CreateCampaignInput,
   actor: AuthContext,

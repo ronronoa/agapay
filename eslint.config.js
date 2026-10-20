@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/coverage/**',
       '**/generated/**',
+      '**/.opencode/**',
       'apps/api/prisma/migrations/**',
       // Validated by `prisma validate`, not ESLint.
       '**/*.prisma',

@@ -58,6 +58,8 @@ export const createCampaignSchema = z
     ]),
     startDate: dateField,
     endDate: dateField.nullable().optional(),
+    // Set by the image upload endpoint after create, or accepted as a URL here.
+    coverImageUrl: z.string().max(500).nullable().optional(),
     areas: z.array(campaignAreaInputSchema).max(200).default([]),
     priorityItems: z.array(priorityItemInputSchema).max(200).default([]),
   })

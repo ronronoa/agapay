@@ -35,6 +35,16 @@ export function isOverBudget(sentToday: number, limit: number): boolean {
   return sentToday >= limit;
 }
 
+// Gmail throttles per hour as well as per day, so both budgets bind. Critical
+// mail (priority 1) bypasses both, matching the daily rule.
+export function shouldSkip(priority: number, sentToday: number, sentThisHour: number): boolean {
+  return (
+    priority > 1 &&
+    (isOverBudget(sentToday, env.EMAIL_DAILY_LIMIT) ||
+      isOverBudget(sentThisHour, env.EMAIL_HOURLY_LIMIT))
+  );
+}
+
 function nextRetryAt(now: Date, attempts: number): Date {
   const step: number = BACKOFF_MS[Math.min(attempts, BACKOFF_MS.length) - 1] ?? LAST_BACKOFF_MS;
   return new Date(now.getTime() + step);
@@ -64,6 +74,10 @@ async function drainBatch(
   let sentToday = await prisma.emailNotification.count({
     where: { status: 'SENT', sentAt: { gte: startOfUtcDay(now) } },
   });
+  // Rolling hour, not the clock hour: a burst at 10:59 must not reset at 11:00.
+  let sentThisHour = await prisma.emailNotification.count({
+    where: { status: 'SENT', sentAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) } },
+  });
 
   let claimedAny = false;
   for (const row of due) {
@@ -76,7 +90,7 @@ async function drainBatch(
     claimedAny = true;
     result.claimed += 1;
 
-    if (row.priority > 1 && isOverBudget(sentToday, env.EMAIL_DAILY_LIMIT)) {
+    if (shouldSkip(row.priority, sentToday, sentThisHour)) {
       result.skippedOverBudget += 1;
       await prisma.emailNotification.update({
         where: { id: row.id },
@@ -103,6 +117,7 @@ async function drainBatch(
         },
       });
       sentToday += 1;
+      sentThisHour += 1;
       result.sent += 1;
       logger.info({ notificationId: row.id, type: row.type }, 'email sent');
     } catch (err) {

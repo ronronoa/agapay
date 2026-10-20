@@ -49,7 +49,7 @@ export function RegisterPage() {
       <main className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-2 lg:px-8">
         <section
           aria-label="About joining Agapay"
-          className="rounded-xl border border-border bg-surface p-8 shadow-card"
+          className="rounded-xl border border-border bg-surface p-8 shadow-card md:flex flex-col hidden"
         >
           <p className="text-lg font-semibold">Agapay</p>
           <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">Join Agapay</h1>
