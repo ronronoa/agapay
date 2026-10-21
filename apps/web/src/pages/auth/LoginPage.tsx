@@ -6,8 +6,7 @@ import { login } from '../../lib/auth-api';
 import { LandingHeader } from '../../components/landing/LandingHeader';
 import { LandingFooter } from '../../components/landing/LandingFooter';
 import { Input } from '../../components/ui/input';
-
-const inputWrap = 'mt-1';
+import { ArrowRight, Eye, EyeClosed, LoaderCircle, Lock, Mail } from 'lucide-react';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -37,133 +36,190 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-screen font-sans flex flex-col justify-between">
       <LandingHeader />
-      <main className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-2 lg:px-8">
-        <section
-          aria-label="About signing in"
-          className="rounded-xl border border-border bg-surface p-8 shadow-card"
-        >
-          <p className="text-lg font-semibold">Agapay</p>
-          <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">
-            Welcome back to Agapay
-          </h1>
-          <p className="mt-2 text-sm text-text-muted">
-            Sign in to continue supporting or receiving aid. Your secure account is ready when you
-            are.
-          </p>
-          <div className="mt-6 aspect-4/3 w-full overflow-hidden rounded-lg">
-            <img
-              src="/images/relief-distribution.png"
-              alt="Volunteers packing donated relief goods"
-              className="h-full w-full object-cover"
-            />
-          </div>
-        </section>
-
-        <section
-          aria-label="Sign in form"
-          className="rounded-xl border border-border bg-surface p-8 shadow-card"
-        >
-          <h2 className="font-display text-2xl font-bold tracking-tight">Welcome back</h2>
-          <p className="mt-1 text-sm text-text-muted">
-            Sign in to continue supporting or receiving aid.
-          </p>
-
-          <div
-            role="group"
-            aria-label="Choose a role"
-            className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-border p-1"
+      <main className="mx-auto w-full p-4 md:p-8 flex items-center justify-center flex-1">
+        <div className="border border-border w-full grid grid-cols-1 md:grid-cols-2 rounded-3xl overflow-hidden shadow-2xl min-h-[600px]">
+          <section
+            aria-label="About signing in"
+            className="relative bg-gradient-to-br from-[#2a4d46] via-[#23433e] to-[#122825] p-8 md:p-12 hidden md:flex flex-col justify-between rounded-br-[80px]"
           >
-            <span
-              aria-current="true"
-              className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-gray-300 bg-surface px-4 py-2 text-sm font-semibold shadow-xl"
-            >
-              Donor
-            </span>
-            <Link
-              to="/request-assistance"
-              className="inline-flex min-h-[44px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-text-muted hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              Beneficiary
-            </Link>
-          </div>
-
-          <form onSubmit={onSubmit} className="mt-4 space-y-4" noValidate>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium">
-                Email Address
-              </label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="username"
-                placeholder="name@example.com"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                aria-describedby={error === null ? undefined : 'login-error'}
-              />
+              <p className="text-sm font-semibold tracking-wider text-slate-200 mb-10">Agapay</p>
+              <h1 className="text-4xl md:text-5xl font-bold leading-tight tracking-tight text-white mb-6">
+                Welcome
+                <br />
+                back
+              </h1>
+              <p className="text-slate-300 text-sm md:text-base leading-relaxed max-w-sm">
+                Log in to track donations, review requests, and see the impact of every relief pack.
+              </p>
             </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium">
-                Password
-              </label>
-              <div className={`${inputWrap} flex gap-2`}>
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  aria-describedby={error === null ? undefined : 'login-error'}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="rounded-md border border-border-strong px-3 py-2 text-sm font-medium"
+            <div className="mt-12 space-y-4">
+              <div className="border-t border-white/10 pt-4 flex items-center gap-3 text-xs md:text-sm text-slate-200">
+                <svg
+                  className="w-4 h-4 shrink-0 text-teal-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  {showPassword ? 'Hide' : 'Show'}
-                </button>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span>Verified needs, geo-located by local leaders</span>
+              </div>
+              <div className="border-t border-white/10 pt-4 flex items-center gap-3 text-xs md:text-sm text-slate-200">
+                <svg
+                  className="w-4 h-4 shrink-0 text-teal-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span>Real-time distribution tracking</span>
+              </div>
+              <div className="border-t border-white/10 pt-4 flex items-center gap-3 text-xs md:text-sm text-slate-200">
+                <svg
+                  className="w-4 h-4 shrink-0 text-teal-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                  />
+                </svg>
+                <span>Every gift reaches a family</span>
               </div>
             </div>
+          </section>
 
-            <div className="text-right">
-              <Link
-                to="/forgot-password"
-                className="text-sm font-medium text-primary underline underline-offset-4"
-              >
-                Forgot Password?
-              </Link>
+          <section
+            aria-label="Sign in form"
+            className="p-8 md:p-12 flex flex-col justify-center max-w-md mx-auto w-full"
+          >
+            <div className="mb-6">
+              <h2 className="text-3xl font-bold mb-2">Log in</h2>
+              <p className="text-xs text-slate-500">Log in to continue to your dashboard.</p>
             </div>
 
-            {error === null ? null : (
-              <p id="login-error" role="alert" className="text-sm font-medium">
-                {error}
-              </p>
-            )}
+            <form onSubmit={onSubmit} className="space-y-5" noValidate>
+              <div className="space-y-2">
+                <label htmlFor="email" className="block text-xs font-medium">
+                  Email address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <Mail size={16} />
+                  </div>
+                  <Input
+                    id="email"
+                    type="email"
+                    autoComplete="username"
+                    placeholder="you@example.com"
+                    required
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    aria-describedby={error === null ? undefined : 'login-error'}
+                    className="w-full bg-transparent border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-sm placeholder-slate-500 focus:outline-none focus:border-teal-500 transition-colors"
+                  />
+                </div>
+              </div>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {submitting ? 'Signing in…' : 'Log In'}
-            </button>
-            <p className="text-center text-sm text-text-muted">
-              Don&apos;t have an account?{' '}
-              <Link
-                to="/register"
-                className="font-medium text-primary underline underline-offset-4"
+              <div className="space-y-2">
+                <label htmlFor="password" className="block text-xs font-medium">
+                  Password
+                </label>
+                <div className="relative flex items-center">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <Lock size={16} />
+                  </div>
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    placeholder="Enter your password"
+                    required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    aria-describedby={error === null ? undefined : 'login-error'}
+                    className="w-full bg-transparent border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-10 text-sm placeholder-slate-500 focus:outline-none focus:border-teal-500 transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-3 flex items-center cursor-pointer"
+                  >
+                    {showPassword ? <EyeClosed size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs pt-1">
+                {error === null ? null : (
+                  <p id="login-error" role="alert" className="text-xs font-medium text-red-400">
+                    {error}
+                  </p>
+                )}
+
+                <Link
+                  to="/forgot-password"
+                  className="text-teal-700 hover:text-teal-500 transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full bg-[#3d6e70] hover:bg-[#498285] text-white font-medium py-3 px-6 rounded-full flex items-center justify-between transition-all mt-4 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Sign Up
-              </Link>
-            </p>
-          </form>
-        </section>
+                {submitting ? (
+                  <div className="flex items-center justify-center gap-2 w-full">
+                    <span>Signing in</span>
+                    <LoaderCircle className="animate-[spin_1s_ease-in-out_infinite]" size={16} />
+                  </div>
+                ) : (
+                  <>
+                    <span>Log In</span>
+                    <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+
+              <div className="mt-8 text-center space-y-2 text-xs">
+                <p className="text-slate-400">
+                  New to Agapay?{' '}
+                  <Link to="/register" className="text-teal-600 hover:text-teal-400 underline">
+                    Create an account
+                  </Link>
+                </p>
+                <p className="text-slate-400">
+                  Agapay staff?{' '}
+                  <Link to="/admin-login" className="text-teal-600 hover:text-teal-400 underline">
+                    Admin log in
+                  </Link>
+                </p>
+              </div>
+            </form>
+          </section>
+        </div>
       </main>
       <LandingFooter />
     </div>

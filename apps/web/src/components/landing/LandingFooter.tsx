@@ -53,13 +53,13 @@ export function LandingFooter() {
             <div className="flex max-w-sm flex-wrap gap-3">
               <Link
                 to="/request-assistance"
-                className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-pine px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-pine px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Request assistance
               </Link>
               <Link
                 to="/track"
-                className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-white/30 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/30 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Track a request
               </Link>

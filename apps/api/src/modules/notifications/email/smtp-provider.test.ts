@@ -34,6 +34,26 @@ describe('smtp provider', () => {
     expect(result.providerMessageId).toBe('<abc123@mail.gmail.com>');
   });
 
+  it('passes the calendar attachment to the SMTP transport', async () => {
+    let seen: SmtpMessage | undefined;
+    const provider = createSmtpProvider({
+      ...options,
+      sendMail: (message) => {
+        seen = message;
+        return Promise.resolve({ messageId: 'calendar-test' });
+      },
+    });
+    const attachments = [
+      {
+        filename: 'schedule.ics',
+        content: 'BEGIN:VCALENDAR',
+        contentType: 'text/calendar; charset=utf-8',
+      },
+    ];
+    await provider.send({ ...input, attachments });
+    expect(seen?.attachments).toEqual(attachments);
+  });
+
   it('turns a transport failure into a plain error with no credentials', async () => {
     const failure = Object.assign(new Error(`535 auth failed for ${options.pass}`), {
       code: 'EAUTH',

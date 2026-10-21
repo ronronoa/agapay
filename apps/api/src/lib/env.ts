@@ -40,6 +40,13 @@ const envSchema = z
     // rejected long before the daily budget is spent.
     EMAIL_HOURLY_LIMIT: z.coerce.number().int().positive().default(60),
 
+    GOOGLE_CALENDAR_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    GOOGLE_CALENDAR_ID: z.string().min(1).optional(),
+    GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().email().optional(),
+    GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().min(1).optional(),
     TURNSTILE_SECRET: z.string().min(1).optional(),
 
     // Local inventory-photo storage. Resolved against the API working directory;
@@ -58,6 +65,19 @@ const envSchema = z
     SEED_STAFF_EMAIL: emailSchema.optional(),
     SEED_STAFF_PASSWORD: passwordSchema.optional(),
   })
+  .refine(
+    (v) =>
+      !v.GOOGLE_CALENDAR_ENABLED ||
+      Boolean(
+        v.GOOGLE_CALENDAR_ID &&
+        v.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
+        v.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
+      ),
+    {
+      message: 'Google Calendar credentials are required when enabled',
+      path: ['GOOGLE_CALENDAR_ID'],
+    },
+  )
   // Cross-field check: selecting a real provider without its credential would
   // otherwise fail later, inside a worker, at 3am.
   .refine((value) => value.EMAIL_PROVIDER !== 'resend' || Boolean(value.RESEND_API_KEY), {

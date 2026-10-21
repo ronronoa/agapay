@@ -115,9 +115,15 @@ export function DonationsPage() {
     ['admin-collection-events'],
     '/api/v1/calendar/events?type=COLLECTION&status=SCHEDULED&pageSize=100',
     calendarEventListResponseSchema,
-    { enabled: action === 'schedule' && selected?.status === 'VERIFIED' },
+    {
+      enabled:
+        action === 'schedule' &&
+        (selected?.status === 'VERIFIED' || selected?.status === 'SCHEDULED'),
+    },
   );
-  const events = scheduleEventsQuery.data?.data.items ?? [];
+  const events = (scheduleEventsQuery.data?.data.items ?? []).filter(
+    (event) => event.campaignId === selected?.campaignId && +new Date(event.endAt) > Date.now(),
+  );
   const total = query.data?.data.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -503,6 +509,9 @@ export function DonationsPage() {
               ) : null}
               {selected.status === 'SCHEDULED' ? (
                 <>
+                  <Button type="button" variant="accent" onClick={() => openAction('schedule')}>
+                    Reschedule
+                  </Button>
                   <Button type="button" onClick={() => openAction('collect')}>
                     Collect
                   </Button>

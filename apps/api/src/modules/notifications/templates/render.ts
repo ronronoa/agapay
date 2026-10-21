@@ -241,7 +241,13 @@ export function renderEmail(
       };
     }
     case 'COLLECTION_REMINDER':
-    case 'DISTRIBUTION_REMINDER':
+    case 'DISTRIBUTION_REMINDER': {
+      const name = field(templateData, 'name');
+      const location = field(templateData, 'location');
+      const startAt = field(templateData, 'startAt');
+      const text = `Hi ${name}, your Agapay schedule is ${manilaDateTime(startAt)} at ${location}.`;
+      return { subject: 'Your Agapay schedule reminder', text, html: shell(paragraph(text)) };
+    }
     case 'DONATION_SUBMITTED': {
       const name = field(templateData, 'name');
       const referenceNumber = field(templateData, 'referenceNumber');

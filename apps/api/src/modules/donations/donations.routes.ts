@@ -87,3 +87,7 @@ donationsRouter.post('/:id/collect', requireRole('STAFF', 'ADMIN'), async (req, 
     data: await service.collect(pathParam(req, 'id'), parsed.data, actorFrom(req), systemClock),
   });
 });
+
+donationsRouter.post('/:id/unschedule', requireRole('STAFF', 'ADMIN'), async (req, res) => {
+  res.status(200).json({ data: await service.unschedule(pathParam(req, 'id'), actorFrom(req)) });
+});

@@ -3,6 +3,7 @@ import type { EmailProvider, SendEmailInput, SendEmailResult } from './email-pro
 import { SEND_TIMEOUT_MS, withTimeout } from './email-provider.js';
 
 export interface SmtpMessage {
+  attachments?: SendEmailInput['attachments'];
   from: string;
   to: string;
   subject: string;
@@ -64,6 +65,7 @@ export function createSmtpProvider(options: SmtpProviderOptions): EmailProvider 
           subject: input.subject,
           html: input.html,
           text: input.text,
+          ...(input.attachments ? { attachments: input.attachments } : {}),
         }),
         SEND_TIMEOUT_MS,
         'smtp send',

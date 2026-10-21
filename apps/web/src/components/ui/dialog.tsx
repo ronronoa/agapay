@@ -33,8 +33,8 @@ export function Dialog({
             <DialogPrimitive.Content forceMount asChild>
               <motion.div
                 className={cn(
-                  'fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-border bg-surface p-6 shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
-                  size === 'xl' ? 'max-w-4xl' : 'max-w-md',
+                  'fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[calc(100vw-2rem)] overflow-y-auto rounded-sm border border-border bg-surface p-6 shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+                  size === 'xl' ? 'max-w-xl' : 'max-w-md',
                 )}
                 initial={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
                 animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}

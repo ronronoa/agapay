@@ -157,7 +157,7 @@ export function LandingHeader() {
                 aria-expanded={actionsOpen}
                 aria-haspopup="true"
                 onClick={() => setActionsOpen((open) => !open)}
-                className="inline-flex min-h-[44px] items-center gap-1 text-sm font-medium text-white/90 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-white/90 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Take Action
                 <svg

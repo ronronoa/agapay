@@ -29,6 +29,7 @@
     "express": "^5.0.1",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
+    "ics": "^3.12.1",
     "jose": "^6.2.12",
     "multer": "^2.4.0",
     "nodemailer": "^10.1.7",

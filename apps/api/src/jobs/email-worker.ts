@@ -1,3 +1,6 @@
+import { renderScheduleEmail, isScheduleCurrent } from '../modules/notifications/schedule-email.js';
+import { scanReminders } from './reminders.js';
+import { syncCalendars } from './calendar-sync.js';
 import PgBoss from 'pg-boss';
 import { prisma } from '../lib/prisma.js';
 import { systemClock, type Clock } from '../lib/clock.js';
@@ -71,13 +74,17 @@ async function drainBatch(
   });
   if (due.length === 0) return false;
 
-  let sentToday = await prisma.emailNotification.count({
-    where: { status: 'SENT', sentAt: { gte: startOfUtcDay(now) } },
-  });
-  // Rolling hour, not the clock hour: a burst at 10:59 must not reset at 11:00.
-  let sentThisHour = await prisma.emailNotification.count({
-    where: { status: 'SENT', sentAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) } },
-  });
+  // Counts run in parallel: each is a round trip to the database, and this
+  // path runs on every sweep.
+  let [sentToday, sentThisHour] = await Promise.all([
+    prisma.emailNotification.count({
+      where: { status: 'SENT', sentAt: { gte: startOfUtcDay(now) } },
+    }),
+    // Rolling hour, not the clock hour: a burst at 10:59 must not reset at 11:00.
+    prisma.emailNotification.count({
+      where: { status: 'SENT', sentAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) } },
+    }),
+  ]);
 
   let claimedAny = false;
   for (const row of due) {
@@ -100,12 +107,21 @@ async function drainBatch(
     }
 
     try {
-      const rendered = renderEmail(row.type, row.templateData, env.WEB_ORIGIN);
+      if (!(await isScheduleCurrent(row.templateData, clock))) {
+        await prisma.emailNotification.update({
+          where: { id: row.id },
+          data: { status: 'SUPPRESSED' },
+        });
+        continue;
+      }
+      const schedule = renderScheduleEmail(row.templateData);
+      const rendered = schedule ?? renderEmail(row.type, row.templateData, env.WEB_ORIGIN);
       const sendResult = await provider.send({
         to: row.toEmail,
         subject: rendered.subject,
         html: rendered.html,
         text: rendered.text,
+        ...(schedule ? { attachments: schedule.attachments } : {}),
         dedupeKey: row.dedupeKey,
       });
       await prisma.emailNotification.update({
@@ -192,6 +208,18 @@ export async function startEmailWorker(): Promise<void> {
   });
   // Upsert on (name): re-running only refreshes the cron expression.
   await instance.schedule(SWEEP_QUEUE, SWEEP_CRON);
+  await instance.createQueue('reminders.scan');
+  await instance.work('reminders.scan', async () => {
+    await scanReminders();
+  });
+  await instance.schedule('reminders.scan', '0 * * * *');
+  await instance.createQueue('calendar.sync');
+  await instance.work('calendar.sync', async () => {
+    await syncCalendars();
+  });
+  await instance.schedule('calendar.sync', '* * * * *');
+  await scanReminders();
+  await syncCalendars();
   boss = instance;
   logger.info('email worker started');
   await drainOnce();
