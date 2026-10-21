@@ -13,7 +13,7 @@ import {
   UserRound,
   Users,
 } from 'lucide-react';
-import { assistanceRequestListResponseSchema } from '@agapay/shared';
+import { adminDashboardResponseSchema } from '@agapay/shared';
 import { useApiQuery } from '../../lib/use-api-query';
 import { DashboardShell, type DashboardNavItem } from './DashboardShell';
 
@@ -37,12 +37,15 @@ const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
 
 export function AdminShell({ children }: { children?: ReactNode }) {
   const pending = useApiQuery(
-    ['admin-pending-requests'],
-    '/api/v1/assistance-requests?status=PENDING&pageSize=1',
-    assistanceRequestListResponseSchema,
+    ['admin-dashboard'],
+    '/api/v1/dashboard/admin',
+    adminDashboardResponseSchema,
   );
   const items: DashboardNavItem[] = ADMIN_NAV_ITEMS.map((item) => {
-    const badge = item.badgeKey === undefined ? undefined : pending.data?.data.total;
+    const badge =
+      item.badgeKey === undefined
+        ? undefined
+        : pending.data?.data.needsAttention.requestsAwaitingReview;
     return {
       to: item.to,
       label: item.label,

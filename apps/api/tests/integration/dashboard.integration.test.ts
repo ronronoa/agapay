@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { adminDashboardResponseSchema } from '@agapay/shared';
+import { adminDashboard, donorDashboard } from '../../src/modules/dashboard/dashboard.service.js';
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { z } from 'zod';
@@ -219,5 +222,344 @@ describe('GET /public/stats', () => {
     expect(body.verifiedDonations).toBeGreaterThanOrEqual(1);
     expect(body.beneficiariesServed).toBeGreaterThanOrEqual(0);
     expect(body.goodsDistributedThisMonth).toBeGreaterThanOrEqual(0);
+  });
+});
+
+async function dashboardCampaign(label: string) {
+  return prisma.campaign.create({
+    data: {
+      name: `${label}-${RUN}-${seq++}`,
+      slug: `${label.toLowerCase()}-${RUN}-${seq++}`,
+      description: 'Dashboard test',
+      calamityType: 'FLOOD',
+      status: 'ACTIVE',
+      startDate: new Date('2020-01-01'),
+    },
+  });
+}
+
+describe('M5A admin summary', () => {
+  it('allows admins/staff and denies donors/anonymous callers', async () => {
+    expect((await request(app).get('/api/v1/dashboard/admin')).status).toBe(401);
+    const donor = await makeDonor();
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/dashboard/admin')
+          .set('Authorization', `Bearer ${donor.token}`)
+      ).status,
+    ).toBe(403);
+    for (const role of ['ADMIN', 'STAFF'] as const) {
+      const email = `dash-${role.toLowerCase()}-${RUN}-${seq++}@example.com`;
+      await prisma.user.create({
+        data: {
+          name: 'Dashboard Personnel',
+          role,
+          email,
+          passwordHash: await hashPassword(PASSWORD),
+        },
+      });
+      const login = await request(app)
+        .post('/api/v1/auth/login')
+        .set('X-Forwarded-For', uniqueIp())
+        .send({ email, password: PASSWORD });
+      const token = parse(login, accessTokenResponseSchema).data.accessToken;
+      const response = await request(app)
+        .get('/api/v1/dashboard/admin')
+        .set('Authorization', `Bearer ${token}`);
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      parse(response, adminDashboardResponseSchema);
+      expect(JSON.stringify(response.body)).not.toContain(email);
+      expect(JSON.stringify(response.body)).not.toContain('actorName');
+    }
+  });
+
+  it('counts every record, uses Manila half-open dates, and sums actual handovers', async () => {
+    const now = new Date('2026-11-01T00:05:00+08:00');
+    const before = await adminDashboard(now);
+    const donor = await makeDonor();
+    const campaign = await dashboardCampaign('Volume');
+    const item = await prisma.itemType.create({
+      data: { name: `Dash volume ${RUN}`, category: 'FOOD', unit: 'pack', lowStockThreshold: 2 },
+    });
+    const stock = await prisma.inventoryItem.create({
+      data: { itemTypeId: item.id, campaignId: campaign.id, available: 2 },
+    });
+    const event = await prisma.calendarEvent.create({
+      data: {
+        type: 'DISTRIBUTION',
+        campaignId: campaign.id,
+        title: 'Cross-month distribution',
+        location: 'Test hall',
+        startAt: new Date('2026-10-31T15:00:00Z'),
+        endAt: new Date('2026-11-01T01:00:00Z'),
+      },
+    });
+    const requestIds = Array.from({ length: 122 }, () => randomUUID());
+    await prisma.assistanceRequest.createMany({
+      data: requestIds.map((id, index) => ({
+        id,
+        referenceNumber: `REQ-DASH-${RUN}-${index}`,
+        fullName: 'Private Recipient',
+        email: `recipient-${RUN}-${index}@example.com`,
+        contactNumber: '09171234567',
+        barangay: 'Test',
+        city: 'Test',
+        province: 'Test',
+        campaignId: campaign.id,
+        status: 'DISTRIBUTED' as const,
+        consentAt: now,
+        submittedAt: new Date('2020-01-01'),
+      })),
+    });
+    const distributionIds = requestIds.map(() => randomUUID());
+    await prisma.distribution.createMany({
+      data: distributionIds.map((id, index) => ({
+        id,
+        requestId: requestIds[index] ?? '',
+        calendarEventId: event.id,
+        status: 'DISTRIBUTED' as const,
+        receivedByName: 'Private Recipient',
+        distributedAt:
+          index < 121 ? new Date('2026-10-31T16:00:00Z') : new Date('2026-10-31T15:59:59.999Z'),
+      })),
+    });
+    await prisma.distributionItem.createMany({
+      data: distributionIds.map((distributionId) => ({
+        distributionId,
+        inventoryItemId: stock.id,
+        quantity: 2,
+      })),
+    });
+    await prisma.donation.createMany({
+      data: Array.from({ length: 122 }, (_, index) => ({
+        referenceNumber: `DON-DASH-VOLUME-${RUN}-${index}`,
+        donorId: donor.id,
+        campaignId: campaign.id,
+        status: 'PENDING' as const,
+        submittedAt:
+          index < 121 ? new Date('2026-10-31T16:00:00Z') : new Date('2026-10-25T16:00:00Z'),
+      })),
+    });
+    const after = await adminDashboard(now);
+    expect(
+      after.needsAttention.donationsAwaitingVerification -
+        before.needsAttention.donationsAwaitingVerification,
+    ).toBe(122);
+    expect(after.goodsDistributed.thisMonth - before.goodsDistributed.thisMonth).toBe(242);
+    expect(after.goodsDistributed.lastMonth - before.goodsDistributed.lastMonth).toBe(2);
+    expect(after.beneficiariesServed.total - before.beneficiariesServed.total).toBe(122);
+    expect(after.beneficiariesServed.thisMonth - before.beneficiariesServed.thisMonth).toBe(121);
+    expect(after.beneficiariesServed.lastMonth - before.beneficiariesServed.lastMonth).toBe(1);
+    expect(after.donationActivity.thisWeek - before.donationActivity.thisWeek).toBe(122);
+    expect(
+      (after.donationActivity.byWeekday[6] ?? 0) - (before.donationActivity.byWeekday[6] ?? 0),
+    ).toBe(121);
+    expect(
+      (after.donationActivity.byWeekday[0] ?? 0) - (before.donationActivity.byWeekday[0] ?? 0),
+    ).toBe(1);
+    expect(after.needsAttention.distributionsToday - before.needsAttention.distributionsToday).toBe(
+      1,
+    );
+    expect(after.needsAttention.lowStockItems - before.needsAttention.lowStockItems).toBe(1);
+    expect(after.periods.thisMonth.from).toBe('2026-10-31T16:00:00.000Z');
+    const monday = await adminDashboard(new Date('2026-11-02T00:00:00+08:00'));
+    expect(monday.periods.thisWeek.from).toBe('2026-11-01T16:00:00.000Z');
+    // Sunday gifts cannot spill into Monday's week.
+    expect(monday.donationActivity.lastWeek).toBe(after.donationActivity.thisWeek);
+  });
+
+  it('counts review/shortage queues and excludes cancelled, closed and ended events from upcoming', async () => {
+    const now = new Date('2026-11-10T12:00:00+08:00');
+    const before = await adminDashboard(now);
+    const campaign = await dashboardCampaign('Queues');
+    const item = await prisma.itemType.create({
+      data: { name: `Dash queues ${RUN}`, category: 'WATER', unit: 'bottle' },
+    });
+    await prisma.inventoryItem.create({
+      data: { itemTypeId: item.id, campaignId: campaign.id, available: 2 },
+    });
+    for (const [index, status] of (
+      ['PENDING', 'UNDER_REVIEW', 'APPROVED', 'APPROVED'] as const
+    ).entries()) {
+      await prisma.assistanceRequest.create({
+        data: {
+          referenceNumber: `REQ-DASH-QUEUE-${RUN}-${index}`,
+          fullName: 'Private Queue',
+          email: `queue-${RUN}-${index}@example.com`,
+          contactNumber: '09171234567',
+          barangay: 'Test',
+          city: 'Test',
+          province: 'Test',
+          campaignId: campaign.id,
+          status,
+          consentAt: now,
+          items: { create: [{ itemTypeId: item.id, quantity: index === 2 ? 3 : 2 }] },
+        },
+      });
+    }
+    for (const status of ['CANCELLED', 'COMPLETED'] as const) {
+      await prisma.calendarEvent.create({
+        data: {
+          type: 'DISTRIBUTION',
+          campaignId: campaign.id,
+          title: `Excluded ${status}`,
+          location: 'Test hall',
+          status,
+          startAt: now,
+          endAt: new Date('2026-11-10T22:00:00+08:00'),
+        },
+      });
+    }
+    const endingAtMidnight = await prisma.calendarEvent.create({
+      data: {
+        type: 'DISTRIBUTION',
+        campaignId: campaign.id,
+        title: 'Ended at day boundary',
+        location: 'Test hall',
+        startAt: new Date('2026-11-09T18:00:00+08:00'),
+        endAt: new Date('2026-11-10T00:00:00+08:00'),
+      },
+    });
+    await prisma.donation.create({
+      data: {
+        referenceNumber: `DON-DASH-VERIFIED-${RUN}`,
+        donorId: (await makeDonor()).id,
+        campaignId: campaign.id,
+        status: 'VERIFIED',
+        submittedAt: new Date('2020-01-01'),
+        verifiedAt: now,
+      },
+    });
+    const after = await adminDashboard(now);
+    expect(
+      after.needsAttention.requestsAwaitingReview - before.needsAttention.requestsAwaitingReview,
+    ).toBe(2);
+    expect(after.awaitingStock - before.awaitingStock).toBe(1);
+    expect(after.needsAttention.distributionsToday).toBe(before.needsAttention.distributionsToday);
+    expect(after.upcomingDistributions.some((event) => event.id === endingAtMidnight.id)).toBe(
+      false,
+    );
+    expect(after.upcomingDistributions.every((event) => new Date(event.endAt) > now)).toBe(true);
+    expect(after.verifiedDonations.thisMonth - before.verifiedDonations.thisMonth).toBe(1);
+  });
+
+  it('keeps donor totals independent of recent-list limits and isolates another donor', async () => {
+    const donor = await makeDonor();
+    const other = await makeDonor();
+    const campaign = await dashboardCampaign('DonorVolume');
+    const item = await prisma.itemType.create({
+      data: { name: `Dash donor ${RUN}`, category: 'HYGIENE', unit: 'kit' },
+    });
+    const now = new Date('2026-11-01T00:05:00+08:00');
+    const ids = Array.from({ length: 121 }, () => randomUUID());
+    await prisma.donation.createMany({
+      data: ids.map((id, index) => ({
+        id,
+        referenceNumber: `DON-DASH-OWN-${RUN}-${index}`,
+        donorId: donor.id,
+        campaignId: campaign.id,
+        status: 'COMPLETED' as const,
+        submittedAt: new Date('2026-10-31T16:00:00Z'),
+      })),
+    });
+    await prisma.donationItem.createMany({
+      data: ids.map((donationId) => ({
+        donationId,
+        itemTypeId: item.id,
+        quantityDeclared: 10,
+        quantityReceived: 3,
+      })),
+    });
+    await prisma.donation.create({
+      data: {
+        referenceNumber: `DON-DASH-OTHER-${RUN}`,
+        donorId: other.id,
+        campaignId: campaign.id,
+        status: 'COMPLETED',
+        items: { create: [{ itemTypeId: item.id, quantityDeclared: 999, quantityReceived: 999 }] },
+      },
+    });
+    const result = await donorDashboard({ userId: donor.id, role: 'DONOR' }, now);
+    expect(result.totalDonations).toBe(121);
+    expect(result.donationsThisMonth).toBe(121);
+    expect(result.totalItemsReceived).toBe(363);
+    expect(result.recent).toHaveLength(5);
+    expect(result.byStatus).toEqual([{ status: 'COMPLETED', count: 121 }]);
+    expect(result.campaignsSupported).toBe(1);
+  });
+});
+
+describe('M5A bounded dashboard previews', () => {
+  it('selects upcoming events and highest stock globally beyond 100 rows', async () => {
+    const latest = await prisma.calendarEvent.aggregate({ _max: { endAt: true } });
+    const now = new Date(
+      Math.ceil(
+        Math.max(
+          Date.parse('2199-01-01T00:00:00Z'),
+          (latest._max.endAt?.getTime() ?? 0) + 86400000,
+        ) / 86400000,
+      ) * 86400000,
+    );
+    const before = await adminDashboard(now);
+    const campaign = await dashboardCampaign('Previews');
+    const itemIds = Array.from({ length: 121 }, () => randomUUID());
+    await prisma.itemType.createMany({
+      data: itemIds.map((id, index) => ({
+        id,
+        name: `Dash preview ${RUN}-${index}`,
+        category: 'FOOD' as const,
+        unit: 'pack',
+        lowStockThreshold: 0,
+      })),
+    });
+    const top = (before.inventory[0]?.available ?? 0) + 10;
+    await prisma.inventoryItem.createMany({
+      data: itemIds.map((itemTypeId, index) => ({
+        itemTypeId,
+        campaignId: campaign.id,
+        available: index === 120 ? top : 1,
+        updatedAt: new Date('2020-01-01'),
+      })),
+    });
+    const eventIds = Array.from({ length: 121 }, () => randomUUID());
+    await prisma.calendarEvent.createMany({
+      data: eventIds.map((id, index) => ({
+        id,
+        campaignId: campaign.id,
+        type: 'DISTRIBUTION' as const,
+        title: `Preview ${index}`,
+        location: 'Test hall',
+        startAt: new Date(now.getTime() + (121 - index) * 60000),
+        endAt: new Date(now.getTime() + (122 - index) * 60000),
+      })),
+    });
+    await prisma.calendarEvent.create({
+      data: {
+        campaignId: campaign.id,
+        type: 'DISTRIBUTION',
+        title: 'Cancelled earlier event',
+        location: 'Test hall',
+        status: 'CANCELLED',
+        startAt: now,
+        endAt: new Date(now.getTime() + 30000),
+      },
+    });
+    const result = await adminDashboard(now);
+    expect(result.upcomingDistributions).toHaveLength(4);
+    expect(result.upcomingDistributions.map((event) => event.id)).toEqual(
+      eventIds.slice(-4).reverse(),
+    );
+    expect(
+      result.needsAttention.distributionsToday - before.needsAttention.distributionsToday,
+    ).toBe(121);
+    expect(result.inventory).toHaveLength(4);
+    expect(result.inventory[0]).toMatchObject({
+      itemTypeName: `Dash preview ${RUN}-120`,
+      available: top,
+      campaignName: campaign.name,
+    });
+    expect(result.activeCampaigns - before.activeCampaigns).toBe(1);
   });
 });
