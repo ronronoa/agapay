@@ -7,6 +7,7 @@ import { CampaignsPage } from '../pages/admin/CampaignsPage';
 import { AuditLogPage } from '../pages/admin/AuditLogPage';
 import { ItemTypesPage } from '../pages/admin/ItemTypesPage';
 import { UsersPage } from '../pages/admin/UsersPage';
+import { SettingsPage } from '../pages/admin/SettingsPage';
 import { ForbiddenPage } from '../pages/ForbiddenPage';
 import { HomePage } from '../pages/HomePage';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
@@ -184,7 +185,14 @@ const router = createBrowserRouter([
       { path: 'distributions', element: <DistributionsPage /> },
       { path: 'calendar', element: <CalendarPage /> },
       { path: 'reports', element: <NotImplementedPage title="Reports" /> },
-      { path: 'settings', element: <NotImplementedPage title="Settings" /> },
+      {
+        path: 'settings',
+        element: (
+          <AuthGate roles={['ADMIN']}>
+            <SettingsPage />
+          </AuthGate>
+        ),
+      },
     ],
   },
 

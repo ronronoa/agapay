@@ -535,6 +535,15 @@ model SequenceCounter {
   value Int    @default(0)
 }
 
+model OperationalSettings {
+  id                    Int @id @default(1)
+  emailDailyLimit        Int
+  emailHourlyLimit       Int
+  lowStockDefault        Int @default(20)
+  retentionMonths        Int @default(12)
+  revision               Int @default(1)
+}
+
 model ChatUsage {
   id       String @id @default(uuid())
   actorKey String // userId, or hashed IP for anonymous visitors

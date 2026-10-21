@@ -14,6 +14,18 @@ import { write as writeAudit } from '../audit/audit.service.js';
 import type { AuthContext } from '../../types/express.js';
 import type { CreateUserInput, UpdateUserInput, UserListQuery } from '@agapay/shared';
 import { RESET_TOKEN_TTL_MS } from '../auth/auth.config.js';
+import { env } from '../../lib/env.js';
+import { RESET_PASSWORD_PATH } from '../notifications/templates/render.js';
+import type { PersonnelInvitation } from '@agapay/shared';
+
+function invitationDetails(token: string, now: Date): PersonnelInvitation {
+  const url = new URL(RESET_PASSWORD_PATH, env.WEB_ORIGIN);
+  url.searchParams.set('token', token);
+  return {
+    url: url.toString(),
+    expiresAt: new Date(now.getTime() + RESET_TOKEN_TTL_MS).toISOString(),
+  };
+}
 
 const userSelect = {
   id: true,
@@ -106,7 +118,7 @@ export async function create(
   input: CreateUserInput,
   actor: AuthContext,
   clock: Clock,
-): Promise<UserListRow> {
+): Promise<{ user: UserListRow; invitation: PersonnelInvitation }> {
   const existing = await prisma.user.findUnique({
     where: { email: input.email },
     select: { id: true },
@@ -165,7 +177,7 @@ export async function create(
         where: { id: created.id },
         select: userSelect,
       });
-      return toDto(row);
+      return { user: toDto(row), invitation: invitationDetails(token, now) };
     }, txOptions);
   } catch (err) {
     if (prismaErrorCode(err) === 'P2002') {
@@ -181,36 +193,45 @@ export async function update(
   actor: AuthContext,
   clock: Clock,
 ): Promise<UserListRow> {
-  const target = await prisma.user.findUnique({ where: { id }, select: userSelect });
-  if (target === null) throw notFound('User');
-
-  // api.md section 13: an admin cannot demote or disable themselves. Without
-  // this, the last admin can lock every admin account out of the system.
-  const demotesSelf = input.role !== undefined && input.role !== target.role;
-  const disablesSelf = input.isActive === false && target.isActive;
-  if (actor.userId === id && (demotesSelf || disablesSelf)) {
-    throw businessRuleViolation('You cannot change your own role or disable your own account.');
-  }
-
-  if (input.isActive === false) {
-    const wouldOrphan = await countOtherActiveAdmins(id);
-    if (wouldOrphan === 0) {
-      throw businessRuleViolation('At least one active admin account must remain.');
-    }
-  }
-
   return withRetry(() =>
     prisma.$transaction(async (tx) => {
-      const updated = await tx.user.update({
-        where: { id },
+      // Serialize personnel changes so concurrent removals cannot lose the last admin.
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+      const target = await tx.user.findUnique({ where: { id }, select: userSelect });
+      if (target === null) throw notFound('User');
+
+      // api.md section 13: an admin cannot demote or disable themselves. Without
+      // this, the last admin can lock every admin account out of the system.
+      const demotesSelf = input.role !== undefined && input.role !== target.role;
+      const disablesSelf = input.isActive === false && target.isActive;
+      if (actor.userId === id && (demotesSelf || disablesSelf)) {
+        throw businessRuleViolation('You cannot change your own role or disable your own account.');
+      }
+
+      if (
+        target.role === UserRole.ADMIN &&
+        target.isActive &&
+        (input.isActive === false || (input.role !== undefined && input.role !== UserRole.ADMIN))
+      ) {
+        const wouldOrphan = await tx.user.count({
+          where: { role: UserRole.ADMIN, isActive: true, id: { not: id } },
+        });
+        if (wouldOrphan === 0) {
+          throw businessRuleViolation('At least one active admin account must remain.');
+        }
+      }
+
+      const changed = await tx.user.updateMany({
+        where: { id, role: target.role, isActive: target.isActive },
         data: {
           ...(input.name === undefined ? {} : { name: input.name }),
           ...(input.role === undefined ? {} : { role: input.role }),
           ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
           ...(input.phone === undefined ? {} : { phone: input.phone }),
         },
-        select: userSelect,
       });
+      if (changed.count !== 1) throw conflict('Account changed. Reload before saving.');
+      const updated = await tx.user.findUniqueOrThrow({ where: { id }, select: userSelect });
 
       if (input.isActive === false) {
         // Disabling must end live sessions immediately, not at token expiry.
@@ -225,7 +246,7 @@ export async function update(
         entityType: 'User',
         entityId: id,
         metadata: {
-          ...(input.name === undefined ? {} : { name: input.name }),
+          ...(input.name === undefined ? {} : { nameChanged: true }),
           ...(input.role === undefined ? {} : { role: input.role }),
           ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
         },
@@ -236,8 +257,60 @@ export async function update(
   );
 }
 
-async function countOtherActiveAdmins(excludeId: string): Promise<number> {
-  return prisma.user.count({
-    where: { role: UserRole.ADMIN, isActive: true, id: { not: excludeId } },
-  });
+export async function resendInvitation(
+  id: string,
+  actor: AuthContext,
+  clock: Clock,
+): Promise<PersonnelInvitation> {
+  const now = clock.now();
+  const token = generateOpaqueToken();
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+    const user = await tx.user.findUnique({ where: { id }, select: userSelect });
+    if (user === null) throw notFound('User');
+    if (!user.isActive || user.role === UserRole.DONOR || user.lastLoginAt !== null) {
+      throw businessRuleViolation('Only active personnel who have not signed in can be invited.');
+    }
+    const recent = await tx.authToken.findFirst({
+      where: {
+        userId: id,
+        type: AuthTokenType.RESET_PASSWORD,
+        usedAt: null,
+        createdAt: { gt: new Date(now.getTime() - 60_000) },
+      },
+    });
+    if (recent !== null) throw conflict('Wait one minute before resending an invitation.');
+    await tx.authToken.updateMany({
+      where: { userId: id, type: AuthTokenType.RESET_PASSWORD, usedAt: null },
+      data: { usedAt: now },
+    });
+    await tx.emailNotification.updateMany({
+      where: { status: 'QUEUED', dedupeKey: { startsWith: `set-password:${id}:` } },
+      data: { status: 'SUPPRESSED' },
+    });
+    await tx.authToken.create({
+      data: {
+        userId: id,
+        type: AuthTokenType.RESET_PASSWORD,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(now.getTime() + RESET_TOKEN_TTL_MS),
+      },
+    });
+    await tx.emailNotification.create({
+      data: {
+        type: NotificationType.DONOR_PASSWORD_RESET,
+        toEmail: user.email,
+        subject: 'Set your Agapay password',
+        templateData: { name: user.name, token },
+        priority: 1,
+        dedupeKey: `set-password:${id}:${token.slice(0, 12)}`,
+      },
+    });
+    await writeAudit(tx, actor, {
+      action: 'user.invitation.resend',
+      entityType: 'User',
+      entityId: id,
+    });
+  }, txOptions);
+  return invitationDetails(token, now);
 }

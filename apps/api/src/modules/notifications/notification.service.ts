@@ -1,10 +1,10 @@
+import { get as getSettings } from '../settings/settings.service.js';
 import type { EmailNotification, Prisma } from '@prisma/client';
 import type { EmailDto, EmailListQuery } from '@agapay/shared';
 import type { AuthContext } from '../../types/express.js';
 import { prisma } from '../../lib/prisma.js';
 import { systemClock, type Clock } from '../../lib/clock.js';
 import { startOfUtcDay } from '../../lib/dates.js';
-import { env } from '../../lib/env.js';
 import { invalidTransition, notFound } from '../../lib/errors.js';
 import { write as writeAudit } from '../audit/audit.service.js';
 
@@ -93,8 +93,9 @@ export async function emailUsage(clock: Clock = systemClock): Promise<{
       where: { status: 'SENT', sentAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) } },
     }),
   ]);
-  const limit = env.EMAIL_DAILY_LIMIT;
-  const hourlyLimit = env.EMAIL_HOURLY_LIMIT;
+  const settings = await getSettings();
+  const limit = settings.emailDailyLimit;
+  const hourlyLimit = settings.emailHourlyLimit;
   return {
     sentToday,
     limit,

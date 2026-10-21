@@ -1,3 +1,4 @@
+import { get as getSettings } from '../settings/settings.service.js';
 import type { ItemCategory } from '@agapay/shared';
 import { prisma, txOptions } from '../../lib/prisma.js';
 import { withRetry } from '../../lib/retry.js';
@@ -84,6 +85,7 @@ export async function list(query: ItemTypeListQuery): Promise<{
 }
 
 export async function create(input: CreateItemTypeInput, actor: AuthContext): Promise<ItemTypeDto> {
+  const lowStockThreshold = input.lowStockThreshold ?? (await getSettings()).lowStockDefault;
   const existing = await prisma.itemType.findUnique({
     where: { name: input.name },
     select: { id: true },
@@ -97,7 +99,7 @@ export async function create(input: CreateItemTypeInput, actor: AuthContext): Pr
           name: input.name,
           category: input.category,
           unit: input.unit,
-          lowStockThreshold: input.lowStockThreshold,
+          lowStockThreshold,
           maxPerRequest: input.maxPerRequest ?? null,
           perHouseholdMember: input.perHouseholdMember ?? null,
         },

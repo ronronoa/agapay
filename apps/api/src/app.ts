@@ -1,3 +1,4 @@
+import { settingsRouter } from './modules/settings/settings.routes.js';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
@@ -89,6 +90,7 @@ export function createApp() {
   app.use('/api/v1/campaigns', campaignsRouter);
   app.use('/api/v1/item-types', itemTypesRouter);
   app.use('/api/v1/users', usersRouter);
+  app.use('/api/v1/settings', settingsRouter);
   app.use('/api/v1/donations', donationsRouter);
   app.use('/api/v1/inventory', inventoryRouter);
   app.use('/api/v1/assistance-requests', requestsRouter);

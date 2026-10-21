@@ -1,3 +1,4 @@
+import { get as getSettings } from '../modules/settings/settings.service.js';
 import { renderScheduleEmail, isScheduleCurrent } from '../modules/notifications/schedule-email.js';
 import { scanReminders } from './reminders.js';
 import { syncCalendars } from './calendar-sync.js';
@@ -40,11 +41,16 @@ export function isOverBudget(sentToday: number, limit: number): boolean {
 
 // Gmail throttles per hour as well as per day, so both budgets bind. Critical
 // mail (priority 1) bypasses both, matching the daily rule.
-export function shouldSkip(priority: number, sentToday: number, sentThisHour: number): boolean {
+export function shouldSkip(
+  priority: number,
+  sentToday: number,
+  sentThisHour: number,
+  limits = { emailDailyLimit: env.EMAIL_DAILY_LIMIT, emailHourlyLimit: env.EMAIL_HOURLY_LIMIT },
+): boolean {
   return (
     priority > 1 &&
-    (isOverBudget(sentToday, env.EMAIL_DAILY_LIMIT) ||
-      isOverBudget(sentThisHour, env.EMAIL_HOURLY_LIMIT))
+    (isOverBudget(sentToday, limits.emailDailyLimit) ||
+      isOverBudget(sentThisHour, limits.emailHourlyLimit))
   );
 }
 
@@ -86,6 +92,7 @@ async function drainBatch(
     }),
   ]);
 
+  const limits = await getSettings();
   let claimedAny = false;
   for (const row of due) {
     // Conditional claim so two sweeps can never send the same row twice.
@@ -97,7 +104,7 @@ async function drainBatch(
     claimedAny = true;
     result.claimed += 1;
 
-    if (shouldSkip(row.priority, sentToday, sentThisHour)) {
+    if (shouldSkip(row.priority, sentToday, sentThisHour, limits)) {
       result.skippedOverBudget += 1;
       await prisma.emailNotification.update({
         where: { id: row.id },
