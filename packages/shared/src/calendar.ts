@@ -26,6 +26,7 @@ export type CreateCalendarEventInput = z.infer<typeof createCalendarEventSchema>
 
 export const updateCalendarEventSchema = z
   .object({
+    revision: z.number().int().positive(),
     title: z.string().trim().min(3).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     startAt: z.coerce.date().optional(),
@@ -34,7 +35,7 @@ export const updateCalendarEventSchema = z
     capacity: z.number().int().min(1).max(100_000).nullable().optional(),
   })
   .strict()
-  .refine((value) => Object.keys(value).length > 0, {
+  .refine((value) => Object.keys(value).length > 1, {
     message: 'Provide at least one field to change.',
   });
 
@@ -89,6 +90,11 @@ export const calendarEventDtoSchema = z.object({
   syncStatus: z.enum([SyncStatus.NOT_SYNCED, SyncStatus.SYNCED, SyncStatus.FAILED]),
   externalEventId: z.string().nullable(),
   createdAt: z.string(),
+  revision: z.number().int(),
+  occupied: z.number().int(),
+  outstandingCollections: z.number().int(),
+  outstandingDistributions: z.number().int(),
+  syncEnabled: z.boolean(),
 });
 
 export type CalendarEventDto = z.infer<typeof calendarEventDtoSchema>;
@@ -103,3 +109,5 @@ export const calendarEventListResponseSchema = z.object({
     total: z.number().int(),
   }),
 });
+
+export const eventActionSchema = z.object({ revision: z.number().int().positive() }).strict();

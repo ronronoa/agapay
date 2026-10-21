@@ -1,3 +1,6 @@
+import { renderScheduleEmail, isScheduleCurrent } from '../modules/notifications/schedule-email.js';
+import { scanReminders } from './reminders.js';
+import { syncCalendars } from './calendar-sync.js';
 import PgBoss from 'pg-boss';
 import { prisma } from '../lib/prisma.js';
 import { systemClock, type Clock } from '../lib/clock.js';
@@ -35,6 +38,16 @@ export function isOverBudget(sentToday: number, limit: number): boolean {
   return sentToday >= limit;
 }
 
+// Gmail throttles per hour as well as per day, so both budgets bind. Critical
+// mail (priority 1) bypasses both, matching the daily rule.
+export function shouldSkip(priority: number, sentToday: number, sentThisHour: number): boolean {
+  return (
+    priority > 1 &&
+    (isOverBudget(sentToday, env.EMAIL_DAILY_LIMIT) ||
+      isOverBudget(sentThisHour, env.EMAIL_HOURLY_LIMIT))
+  );
+}
+
 function nextRetryAt(now: Date, attempts: number): Date {
   const step: number = BACKOFF_MS[Math.min(attempts, BACKOFF_MS.length) - 1] ?? LAST_BACKOFF_MS;
   return new Date(now.getTime() + step);
@@ -61,9 +74,17 @@ async function drainBatch(
   });
   if (due.length === 0) return false;
 
-  let sentToday = await prisma.emailNotification.count({
-    where: { status: 'SENT', sentAt: { gte: startOfUtcDay(now) } },
-  });
+  // Counts run in parallel: each is a round trip to the database, and this
+  // path runs on every sweep.
+  let [sentToday, sentThisHour] = await Promise.all([
+    prisma.emailNotification.count({
+      where: { status: 'SENT', sentAt: { gte: startOfUtcDay(now) } },
+    }),
+    // Rolling hour, not the clock hour: a burst at 10:59 must not reset at 11:00.
+    prisma.emailNotification.count({
+      where: { status: 'SENT', sentAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) } },
+    }),
+  ]);
 
   let claimedAny = false;
   for (const row of due) {
@@ -76,7 +97,7 @@ async function drainBatch(
     claimedAny = true;
     result.claimed += 1;
 
-    if (row.priority > 1 && isOverBudget(sentToday, env.EMAIL_DAILY_LIMIT)) {
+    if (shouldSkip(row.priority, sentToday, sentThisHour)) {
       result.skippedOverBudget += 1;
       await prisma.emailNotification.update({
         where: { id: row.id },
@@ -86,12 +107,21 @@ async function drainBatch(
     }
 
     try {
-      const rendered = renderEmail(row.type, row.templateData, env.WEB_ORIGIN);
+      if (!(await isScheduleCurrent(row.templateData, clock))) {
+        await prisma.emailNotification.update({
+          where: { id: row.id },
+          data: { status: 'SUPPRESSED' },
+        });
+        continue;
+      }
+      const schedule = renderScheduleEmail(row.templateData);
+      const rendered = schedule ?? renderEmail(row.type, row.templateData, env.WEB_ORIGIN);
       const sendResult = await provider.send({
         to: row.toEmail,
         subject: rendered.subject,
         html: rendered.html,
         text: rendered.text,
+        ...(schedule ? { attachments: schedule.attachments } : {}),
         dedupeKey: row.dedupeKey,
       });
       await prisma.emailNotification.update({
@@ -103,6 +133,7 @@ async function drainBatch(
         },
       });
       sentToday += 1;
+      sentThisHour += 1;
       result.sent += 1;
       logger.info({ notificationId: row.id, type: row.type }, 'email sent');
     } catch (err) {
@@ -177,6 +208,18 @@ export async function startEmailWorker(): Promise<void> {
   });
   // Upsert on (name): re-running only refreshes the cron expression.
   await instance.schedule(SWEEP_QUEUE, SWEEP_CRON);
+  await instance.createQueue('reminders.scan');
+  await instance.work('reminders.scan', async () => {
+    await scanReminders();
+  });
+  await instance.schedule('reminders.scan', '0 * * * *');
+  await instance.createQueue('calendar.sync');
+  await instance.work('calendar.sync', async () => {
+    await syncCalendars();
+  });
+  await instance.schedule('calendar.sync', '* * * * *');
+  await scanReminders();
+  await syncCalendars();
   boss = instance;
   logger.info('email worker started');
   await drainOnce();

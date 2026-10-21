@@ -349,6 +349,7 @@ export function AdminDashboardPage() {
           title="Distribution today"
           count={distributionsToday}
           actionLabel="Calendar"
+          to="/admin/calendar"
         />
         <AttentionCard
           icon={Warehouse}

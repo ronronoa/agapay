@@ -199,6 +199,9 @@ describe('GET /notifications/emails/usage', () => {
     // assertion is the row's own status below.
     expect(usage.sentToday).toBeGreaterThanOrEqual(beforeCount + 1);
     expect(usage.remaining).toBe(Math.max(0, usage.limit - usage.sentToday));
+    expect(usage.hourlyLimit).toBe(env.EMAIL_HOURLY_LIMIT);
+    expect(usage.sentThisHour).toBeGreaterThanOrEqual(1);
+    expect(usage.remainingThisHour).toBe(Math.max(0, usage.hourlyLimit - usage.sentThisHour));
     const row = await prisma.emailNotification.findUnique({ where: { id } });
     expect(row?.status).toBe('SENT');
   });

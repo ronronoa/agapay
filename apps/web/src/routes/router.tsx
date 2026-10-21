@@ -16,6 +16,8 @@ import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { NotImplementedPage } from '../pages/NotImplementedPage';
+import { CalendarPage } from '../features/scheduling/CalendarPage';
+import { DistributionsPage } from '../features/scheduling/DistributionsPage';
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { DonationsPage } from '../pages/admin/DonationsPage';
 import { RequestsPage } from '../pages/admin/RequestsPage';
@@ -179,8 +181,8 @@ const router = createBrowserRouter([
           </AuthGate>
         ),
       },
-      { path: 'distributions', element: <NotImplementedPage title="Distributions" /> },
-      { path: 'calendar', element: <NotImplementedPage title="Calendar" /> },
+      { path: 'distributions', element: <DistributionsPage /> },
+      { path: 'calendar', element: <CalendarPage /> },
       { path: 'reports', element: <NotImplementedPage title="Reports" /> },
       { path: 'settings', element: <NotImplementedPage title="Settings" /> },
     ],
@@ -190,7 +192,6 @@ const router = createBrowserRouter([
     path: '/',
     element: <AppShell />,
     children: [
-      // Public
       { path: 'about', element: <NotImplementedPage title="About" /> },
       { path: 'how-it-works', element: <NotImplementedPage title="How It Works" /> },
       { path: 'campaigns', element: <PublicCampaignsPage /> },

@@ -266,6 +266,9 @@ model Donation {
   preferredDate     DateTime?      @db.Timestamptz(3)
   preferredNote     String?
   collectionEventId String?
+  scheduleRevision Int @default(1)
+  scheduleNotifiedAt DateTime? @db.Timestamptz(3)
+  reminderSentAt DateTime? @db.Timestamptz(3)
   notes             String?
   rejectionReason   String?
   submittedAt       DateTime       @default(now()) @db.Timestamptz(3)
@@ -432,6 +435,10 @@ model CalendarEvent {
   externalEventId  String?
   syncStatus       SyncStatus          @default(NOT_SYNCED)
   syncError        String?
+  revision         Int                 @default(1)
+  syncLeaseUntil DateTime? @db.Timestamptz(3)
+  syncAttempts     Int                 @default(0)
+  syncNextAt       DateTime            @default(now()) @db.Timestamptz(3)
   createdById      String?
   createdAt        DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime            @updatedAt @db.Timestamptz(3)
@@ -454,6 +461,8 @@ model Distribution {
   recordedById    String?
   distributedAt   DateTime?          @db.Timestamptz(3)
   reminderSentAt  DateTime?          @db.Timestamptz(3)
+  scheduleRevision Int              @default(1)
+  scheduleNotifiedAt DateTime?      @db.Timestamptz(3)
   createdAt       DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
 

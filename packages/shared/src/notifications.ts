@@ -88,5 +88,8 @@ export const emailUsageResponseSchema = z.object({
     sentToday: z.number().int(),
     limit: z.number().int(),
     remaining: z.number().int(),
+    sentThisHour: z.number().int(),
+    hourlyLimit: z.number().int(),
+    remainingThisHour: z.number().int(),
   }),
 });

@@ -76,12 +76,31 @@ export async function retryEmail(
   return toDto(row);
 }
 
-export async function emailUsage(
-  clock: Clock = systemClock,
-): Promise<{ sentToday: number; limit: number; remaining: number }> {
-  const sentToday = await prisma.emailNotification.count({
-    where: { status: 'SENT', sentAt: { gte: startOfUtcDay(clock.now()) } },
-  });
+export async function emailUsage(clock: Clock = systemClock): Promise<{
+  sentToday: number;
+  limit: number;
+  remaining: number;
+  sentThisHour: number;
+  hourlyLimit: number;
+  remainingThisHour: number;
+}> {
+  const now = clock.now();
+  const [sentToday, sentThisHour] = await Promise.all([
+    prisma.emailNotification.count({
+      where: { status: 'SENT', sentAt: { gte: startOfUtcDay(now) } },
+    }),
+    prisma.emailNotification.count({
+      where: { status: 'SENT', sentAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) } },
+    }),
+  ]);
   const limit = env.EMAIL_DAILY_LIMIT;
-  return { sentToday, limit, remaining: Math.max(0, limit - sentToday) };
+  const hourlyLimit = env.EMAIL_HOURLY_LIMIT;
+  return {
+    sentToday,
+    limit,
+    remaining: Math.max(0, limit - sentToday),
+    sentThisHour,
+    hourlyLimit,
+    remainingThisHour: Math.max(0, hourlyLimit - sentThisHour),
+  };
 }

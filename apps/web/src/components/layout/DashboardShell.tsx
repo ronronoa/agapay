@@ -5,6 +5,7 @@ import { Bell, LogOut, Menu, Printer, Search, type LucideIcon } from 'lucide-rea
 import { getUser, subscribe } from '../../lib/session';
 import { logout } from '../../lib/auth-api';
 import { Dialog, DialogTitle } from '../ui/dialog';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 export interface DashboardNavItem {
   to: string;
@@ -50,9 +51,10 @@ interface SidebarBodyProps {
   items: readonly DashboardNavItem[];
   user: ReturnType<typeof getUser>;
   onNavigate?: (() => void) | undefined;
+  onLogoutRequest: () => void;
 }
 
-function SidebarBody({ items, user, onNavigate }: SidebarBodyProps) {
+function SidebarBody({ items, user, onNavigate, onLogoutRequest }: SidebarBodyProps) {
   const closeProps = onNavigate === undefined ? {} : { onClick: onNavigate };
   return (
     <>
@@ -103,7 +105,7 @@ function SidebarBody({ items, user, onNavigate }: SidebarBodyProps) {
       <div className="p-3">
         <button
           type="button"
-          onClick={() => void logout()}
+          onClick={onLogoutRequest}
           className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-md bg-white/10 px-4 py-2.5 text-sm font-medium hover:bg-white/20"
         >
           <LogOut className="h-4 w-4" aria-hidden="true" />
@@ -126,6 +128,7 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
   const user = useSyncExternalStore(subscribe, getUser, getUser);
   const title = shellTitle();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   return (
     <div className="flex min-h-dvh bg-bg">
@@ -137,7 +140,7 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
       </a>
 
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col bg-primary-subtle text-surface md:flex">
-        <SidebarBody items={items} user={user} />
+        <SidebarBody items={items} user={user} onLogoutRequest={() => setConfirmingLogout(true)} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -225,9 +228,27 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
       <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
         <DialogTitle className="sr-only">Menu</DialogTitle>
         <div className="-mx-2 flex flex-col">
-          <SidebarBody items={items} user={user} onNavigate={() => setMenuOpen(false)} />
+          <SidebarBody
+            items={items}
+            user={user}
+            onNavigate={() => setMenuOpen(false)}
+            onLogoutRequest={() => setConfirmingLogout(true)}
+          />
         </div>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmingLogout}
+        title="Log out?"
+        description="You will need to sign in again to reach your dashboard."
+        confirmLabel="Log out"
+        cancelLabel="Stay signed in"
+        onCancel={() => setConfirmingLogout(false)}
+        onConfirm={() => {
+          setConfirmingLogout(false);
+          void logout();
+        }}
+      />
     </div>
   );
 }

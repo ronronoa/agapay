@@ -19,6 +19,15 @@ export function createResendProvider(options: ResendProviderOptions): EmailProvi
           subject: input.subject,
           html: input.html,
           text: input.text,
+          ...(input.attachments
+            ? {
+                attachments: input.attachments.map((a) => ({
+                  filename: a.filename,
+                  content: Buffer.from(a.content).toString('base64'),
+                  contentType: a.contentType,
+                })),
+              }
+            : {}),
         }),
         SEND_TIMEOUT_MS,
         'resend send',

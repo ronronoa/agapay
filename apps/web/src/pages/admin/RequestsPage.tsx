@@ -489,9 +489,17 @@ export function RequestsPage() {
                 </>
               ) : null}
               {selected.status === 'APPROVED' ? (
-                <Button type="button" variant="accent" onClick={() => openAction('cancel')}>
-                  Cancel
-                </Button>
+                <>
+                  <a
+                    className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-surface"
+                    href={`/admin/distributions?request=${selected.id}`}
+                  >
+                    Schedule distribution
+                  </a>
+                  <Button type="button" variant="accent" onClick={() => openAction('cancel')}>
+                    Cancel
+                  </Button>
+                </>
               ) : null}
             </div>
           </div>

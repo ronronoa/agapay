@@ -81,6 +81,7 @@ export const donationListQuerySchema = z
       ])
       .optional(),
     campaignId: z.string().uuid().optional(),
+    eventId: z.string().uuid().optional(),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
     q: z.string().trim().min(1).max(120).optional(),

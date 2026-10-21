@@ -1,34 +1,27 @@
-import { CalendarEventStatus, NotificationType, RequestStatus } from '@agapay/shared';
-import type { AuthContext } from '../../types/express.js';
 import type {
   CalendarEventDto,
   CalendarEventListQuery,
   CreateCalendarEventInput,
   UpdateCalendarEventInput,
 } from '@agapay/shared';
+import type { AuthContext } from '../../types/express.js';
 import { prisma, txOptions } from '../../lib/prisma.js';
-import { withRetry } from '../../lib/retry.js';
-import { businessRuleViolation, invalidTransition, notFound } from '../../lib/errors.js';
+import { systemClock, type Clock } from '../../lib/clock.js';
+import { env } from '../../lib/env.js';
+import { businessRuleViolation, conflict, notFound } from '../../lib/errors.js';
 import { write as writeAudit } from '../audit/audit.service.js';
 import { releaseStock } from '../inventory/inventory.service.js';
+import { lockEvents, queueSchedule } from './scheduling.js';
 
-type EventRow = {
-  id: string;
-  type: CalendarEventDto['type'];
-  status: CalendarEventDto['status'];
-  title: string;
-  description: string | null;
-  campaignId: string;
-  startAt: Date;
-  endAt: Date;
-  location: string;
-  capacity: number | null;
-  syncStatus: CalendarEventDto['syncStatus'];
-  externalEventId: string | null;
-  createdAt: Date;
-  campaign: { name: string };
-};
-
+const include = {
+  campaign: { select: { name: true } },
+  distributions: { select: { status: true } },
+  donations: { where: { status: 'SCHEDULED' as const }, select: { id: true } },
+} as const;
+type EventRow = NonNullable<Awaited<ReturnType<typeof find>>>;
+function find(id: string) {
+  return prisma.calendarEvent.findUnique({ where: { id }, include });
+}
 function toDto(row: EventRow): CalendarEventDto {
   return {
     id: row.id,
@@ -45,247 +38,250 @@ function toDto(row: EventRow): CalendarEventDto {
     syncStatus: row.syncStatus,
     externalEventId: row.externalEventId,
     createdAt: row.createdAt.toISOString(),
+    revision: row.revision,
+    occupied: row.distributions.filter(
+      (d) => d.status === 'SCHEDULED' || d.status === 'DISTRIBUTED',
+    ).length,
+    outstandingDistributions: row.distributions.filter((d) => d.status === 'SCHEDULED').length,
+    outstandingCollections: row.donations.length,
+    syncEnabled: env.GOOGLE_CALENDAR_ENABLED,
   };
 }
-
-function flatten(row: {
-  id: string;
-  type: CalendarEventDto['type'];
-  status: CalendarEventDto['status'];
-  title: string;
-  description: string | null;
-  campaignId: string;
-  startAt: Date;
-  endAt: Date;
-  location: string;
-  capacity: number | null;
-  syncStatus: CalendarEventDto['syncStatus'];
-  externalEventId: string | null;
-  createdAt: Date;
-  campaign: { name: string };
-}): EventRow {
-  return row;
+export async function detail(id: string): Promise<CalendarEventDto> {
+  const row = await find(id);
+  if (!row) throw notFound('Calendar event');
+  return toDto(row);
 }
-
-const eventInclude = {
-  campaign: { select: { name: true } },
-} as const;
-
-async function getDto(id: string): Promise<CalendarEventDto> {
-  const row = await prisma.calendarEvent.findUnique({ where: { id }, include: eventInclude });
-  if (row === null) throw notFound('Calendar event');
-  return toDto(flatten(row));
-}
-
-export async function create(
-  input: CreateCalendarEventInput,
-  actor: AuthContext,
-): Promise<CalendarEventDto> {
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: input.campaignId },
-    select: { id: true },
-  });
-  if (campaign === null) throw notFound('Campaign');
-
-  const id = await prisma.$transaction(async (tx) => {
-    const created = await tx.calendarEvent.create({
-      data: {
-        type: input.type,
-        title: input.title,
-        description: input.description ?? null,
-        campaignId: input.campaignId,
-        startAt: input.startAt,
-        endAt: input.endAt,
-        location: input.location,
-        capacity: input.capacity ?? null,
-        status: CalendarEventStatus.SCHEDULED,
-        createdById: actor.userId,
-      },
-      select: { id: true },
-    });
-    await writeAudit(tx, actor, {
-      action: 'calendar.create',
-      entityType: 'CalendarEvent',
-      entityId: created.id,
-      metadata: { type: input.type, campaignId: input.campaignId },
-    });
-    return created.id;
-  }, txOptions);
-
-  return getDto(id);
-}
-
-export async function list(query: CalendarEventListQuery): Promise<{
-  items: CalendarEventDto[];
-  page: number;
-  pageSize: number;
-  total: number;
-}> {
+export async function list(query: CalendarEventListQuery) {
   const where = {
-    ...(query.type === undefined ? {} : { type: query.type }),
-    ...(query.campaignId === undefined ? {} : { campaignId: query.campaignId }),
-    ...(query.status === undefined ? {} : { status: query.status }),
-    ...(query.from === undefined && query.to === undefined
-      ? {}
-      : {
-          startAt: {
-            ...(query.from === undefined ? {} : { gte: query.from }),
-            ...(query.to === undefined ? {} : { lte: query.to }),
-          },
-        }),
+    ...(query.type ? { type: query.type } : {}),
+    ...(query.campaignId ? { campaignId: query.campaignId } : {}),
+    ...(query.status ? { status: query.status } : {}),
+    ...(query.from ? { endAt: { gt: query.from } } : {}),
+    ...(query.to ? { startAt: { lt: query.to } } : {}),
   };
   const [rows, total] = await Promise.all([
     prisma.calendarEvent.findMany({
       where,
-      include: eventInclude,
+      include,
       orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
     }),
     prisma.calendarEvent.count({ where }),
   ]);
-  return {
-    items: rows.map((row) => toDto(flatten(row))),
-    page: query.page,
-    pageSize: query.pageSize,
-    total,
-  };
+  return { items: rows.map(toDto), page: query.page, pageSize: query.pageSize, total };
 }
-
-export async function detail(id: string): Promise<CalendarEventDto> {
-  return getDto(id);
+export async function create(
+  input: CreateCalendarEventInput,
+  actor: AuthContext,
+): Promise<CalendarEventDto> {
+  if (input.type !== 'DISTRIBUTION' && input.capacity != null)
+    throw businessRuleViolation('Capacity is only available for distribution events.');
+  if (!(await prisma.campaign.findUnique({ where: { id: input.campaignId } })))
+    throw notFound('Campaign');
+  const id = await prisma.$transaction(async (tx) => {
+    const event = await tx.calendarEvent.create({
+      data: {
+        ...input,
+        description: input.description ?? null,
+        capacity: input.capacity ?? null,
+        createdById: actor.userId,
+      },
+    });
+    await writeAudit(tx, actor, {
+      action: 'calendar.create',
+      entityType: 'CalendarEvent',
+      entityId: event.id,
+      metadata: { type: input.type },
+    });
+    return event.id;
+  }, txOptions);
+  return detail(id);
 }
-
 export async function update(
   id: string,
   input: UpdateCalendarEventInput,
   actor: AuthContext,
+  clock: Clock = systemClock,
 ): Promise<CalendarEventDto> {
-  const existing = await prisma.calendarEvent.findUnique({
-    where: { id },
-    select: { status: true, startAt: true, endAt: true },
-  });
-  if (existing === null) throw notFound('Calendar event');
-  if (existing.status !== CalendarEventStatus.SCHEDULED) {
-    throw invalidTransition(existing.status, CalendarEventStatus.SCHEDULED);
-  }
-  const nextStart = input.startAt ?? existing.startAt;
-  const nextEnd = input.endAt ?? existing.endAt;
-  if (nextEnd <= nextStart) throw businessRuleViolation('endAt must be after startAt.');
-
-  await withRetry(() =>
-    prisma.$transaction(async (tx) => {
-      await tx.calendarEvent.update({
-        where: { id },
-        data: {
-          ...(input.title === undefined ? {} : { title: input.title }),
-          ...(input.description === undefined ? {} : { description: input.description }),
-          ...(input.startAt === undefined ? {} : { startAt: input.startAt }),
-          ...(input.endAt === undefined ? {} : { endAt: input.endAt }),
-          ...(input.location === undefined ? {} : { location: input.location }),
-          ...(input.capacity === undefined ? {} : { capacity: input.capacity }),
-        },
+  await prisma.$transaction(async (tx) => {
+    await lockEvents(tx, [id]);
+    const old = await tx.calendarEvent.findUnique({ where: { id } });
+    if (!old) throw notFound('Calendar event');
+    if (old.revision !== input.revision)
+      throw conflict('This event changed. Refresh and review its assignments.');
+    if (old.status !== 'SCHEDULED') throw conflict('Only scheduled events can be edited.');
+    if ((input.endAt ?? old.endAt) <= (input.startAt ?? old.startAt))
+      throw businessRuleViolation('End time must be after start time.');
+    if (input.capacity != null) {
+      if (old.type !== 'DISTRIBUTION')
+        throw businessRuleViolation('Only distribution events have capacity.');
+      const count = await tx.distribution.count({
+        where: { calendarEventId: id, status: { in: ['SCHEDULED', 'DISTRIBUTED'] } },
       });
-      await writeAudit(tx, actor, {
-        action: 'calendar.update',
-        entityType: 'CalendarEvent',
-        entityId: id,
-        metadata: {},
-      });
-    }, txOptions),
-  );
-
-  return getDto(id);
-}
-
-export async function cancel(id: string, actor: AuthContext): Promise<CalendarEventDto> {
-  const existing = await prisma.calendarEvent.findUnique({
-    where: { id },
-    select: { status: true },
-  });
-  if (existing === null) throw notFound('Calendar event');
-  if (existing.status !== CalendarEventStatus.SCHEDULED) {
-    throw invalidTransition(existing.status, CalendarEventStatus.CANCELLED);
-  }
-
-  await withRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const live = await tx.distribution.findMany({
+      if (input.capacity < count) throw conflict('Capacity cannot be lower than occupied slots.');
+    }
+    const { revision } = input;
+    await tx.calendarEvent.update({
+      where: { id },
+      data: {
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.description === undefined ? {} : { description: input.description }),
+        ...(input.startAt === undefined ? {} : { startAt: input.startAt }),
+        ...(input.endAt === undefined ? {} : { endAt: input.endAt }),
+        ...(input.location === undefined ? {} : { location: input.location }),
+        ...(input.capacity === undefined ? {} : { capacity: input.capacity }),
+        revision: revision + 1,
+        syncStatus: 'NOT_SYNCED',
+        syncAttempts: 0,
+        syncNextAt: clock.now(),
+      },
+    });
+    const changed =
+      (input.startAt !== undefined && +input.startAt !== +old.startAt) ||
+      (input.endAt !== undefined && +input.endAt !== +old.endAt) ||
+      (input.location !== undefined && input.location !== old.location);
+    if (changed) {
+      const distributions = await tx.distribution.findMany({
         where: { calendarEventId: id, status: 'SCHEDULED' },
-        include: {
-          items: true,
-          request: { select: { id: true, fullName: true, email: true } },
-        },
       });
-      const event = await tx.calendarEvent.findUniqueOrThrow({
-        where: { id },
-        select: { location: true, startAt: true },
-      });
-      let released = 0;
-      for (const dist of live) {
-        const claimed = await tx.distribution.updateMany({
-          where: { id: dist.id, status: 'SCHEDULED' },
-          data: { status: 'CANCELLED' },
+      for (const d of distributions) {
+        await tx.distribution.update({
+          where: { id: d.id },
+          data: { scheduleRevision: { increment: 1 } },
         });
-        if (claimed.count === 0) continue;
-        for (const item of dist.items) {
-          await releaseStock(tx, {
-            inventoryItemId: item.inventoryItemId,
-            quantity: item.quantity,
-            distributionItemId: item.id,
-            actorId: actor.userId,
-          });
-        }
-        const current = await tx.assistanceRequest.findUniqueOrThrow({
-          where: { id: dist.requestId },
-          select: { status: true },
-        });
-        if (current.status !== RequestStatus.SCHEDULED) {
-          throw invalidTransition(current.status, RequestStatus.APPROVED);
-        }
-        await tx.assistanceRequest.update({
-          where: { id: dist.requestId },
-          data: { status: RequestStatus.APPROVED },
-        });
-        await tx.emailNotification.create({
-          data: {
-            type: NotificationType.DISTRIBUTION_CANCELLED,
-            toEmail: dist.request.email,
-            subject: 'Your distribution schedule was cancelled',
-            templateData: {
-              name: dist.request.fullName,
-              location: event.location,
-              startAt: event.startAt.toISOString(),
-            },
-            priority: 1,
-            relatedRequestId: dist.requestId,
-            dedupeKey: `distribution-cancelled:${dist.id}`,
-          },
-        });
-        await writeAudit(tx, actor, {
-          action: 'distribution.cancel',
-          entityType: 'Distribution',
-          entityId: dist.id,
-          metadata: { reason: 'event cancelled' },
-        });
-        released += 1;
+        await queueSchedule(tx, 'distribution', d.id, 'schedule', clock);
       }
-      await tx.calendarEvent.update({
-        where: { id },
-        data: { status: CalendarEventStatus.CANCELLED },
+      const donations = await tx.donation.findMany({
+        where: { collectionEventId: id, status: 'SCHEDULED' },
       });
-      await writeAudit(tx, actor, {
-        action: 'calendar.cancel',
-        entityType: 'CalendarEvent',
-        entityId: id,
-        metadata: { releasedDistributions: released },
-      });
-    }, txOptions),
-  );
-
-  return getDto(id);
+      for (const d of donations) {
+        await tx.donation.update({
+          where: { id: d.id },
+          data: { scheduleRevision: { increment: 1 } },
+        });
+        await queueSchedule(tx, 'collection', d.id, 'schedule', clock);
+      }
+    }
+    await writeAudit(tx, actor, {
+      action: 'calendar.update',
+      entityType: 'CalendarEvent',
+      entityId: id,
+      metadata: { revision: revision + 1 },
+    });
+  }, txOptions);
+  return detail(id);
 }
-
+export async function cancel(
+  id: string,
+  actor: AuthContext,
+  revision: number,
+  clock: Clock = systemClock,
+): Promise<CalendarEventDto> {
+  await prisma.$transaction(async (tx) => {
+    await lockEvents(tx, [id]);
+    const event = await tx.calendarEvent.findUnique({ where: { id } });
+    if (!event) throw notFound('Calendar event');
+    if (event.revision !== revision || event.status !== 'SCHEDULED')
+      throw conflict('This event changed. Refresh before cancelling.');
+    const distributions = await tx.distribution.findMany({
+      where: { calendarEventId: id, status: 'SCHEDULED' },
+      include: { items: true },
+    });
+    for (const d of distributions) {
+      await tx.distribution.update({
+        where: { id: d.id },
+        data: { status: 'CANCELLED', scheduleRevision: { increment: 1 } },
+      });
+      for (const item of d.items)
+        await releaseStock(tx, {
+          inventoryItemId: item.inventoryItemId,
+          quantity: item.quantity,
+          distributionItemId: item.id,
+          actorId: actor.userId,
+        });
+      await tx.assistanceRequest.updateMany({
+        where: { id: d.requestId, status: 'SCHEDULED' },
+        data: { status: 'APPROVED' },
+      });
+      await queueSchedule(tx, 'distribution', d.id, 'cancel', clock);
+    }
+    const donations = await tx.donation.findMany({
+      where: { collectionEventId: id, status: 'SCHEDULED' },
+    });
+    for (const d of donations) {
+      await tx.donation.update({
+        where: { id: d.id },
+        data: { scheduleRevision: { increment: 1 } },
+      });
+      await queueSchedule(tx, 'collection', d.id, 'cancel', clock);
+      await tx.donation.update({
+        where: { id: d.id },
+        data: { status: 'VERIFIED', collectionEventId: null },
+      });
+    }
+    await tx.calendarEvent.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+        revision: { increment: 1 },
+        syncStatus: 'NOT_SYNCED',
+        syncAttempts: 0,
+        syncNextAt: clock.now(),
+      },
+    });
+    await writeAudit(tx, actor, {
+      action: 'calendar.cancel',
+      entityType: 'CalendarEvent',
+      entityId: id,
+      metadata: { distributions: distributions.length, collections: donations.length },
+    });
+  }, txOptions);
+  return detail(id);
+}
+export async function complete(
+  id: string,
+  revision: number,
+  actor: AuthContext,
+  clock: Clock = systemClock,
+): Promise<CalendarEventDto> {
+  await prisma.$transaction(async (tx) => {
+    await lockEvents(tx, [id]);
+    const e = await tx.calendarEvent.findUnique({ where: { id } });
+    if (!e) throw notFound('Calendar event');
+    if (e.revision !== revision || e.status !== 'SCHEDULED')
+      throw conflict('This event changed. Refresh before closing.');
+    if (e.endAt > clock.now()) throw businessRuleViolation('Wait until the event has ended.');
+    const outstanding =
+      (await tx.distribution.count({ where: { calendarEventId: id, status: 'SCHEDULED' } })) +
+      (await tx.donation.count({ where: { collectionEventId: id, status: 'SCHEDULED' } }));
+    if (outstanding)
+      throw businessRuleViolation('Resolve every scheduled assignment before closing this event.');
+    await tx.calendarEvent.update({
+      where: { id },
+      data: {
+        status: 'COMPLETED',
+        revision: { increment: 1 },
+        syncStatus: 'NOT_SYNCED',
+        syncAttempts: 0,
+        syncNextAt: clock.now(),
+      },
+    });
+    await writeAudit(tx, actor, {
+      action: 'calendar.complete',
+      entityType: 'CalendarEvent',
+      entityId: id,
+      metadata: {},
+    });
+  }, txOptions);
+  return detail(id);
+}
 export async function resync(id: string): Promise<CalendarEventDto> {
-  return getDto(id);
+  if (!env.GOOGLE_CALENDAR_ENABLED) throw businessRuleViolation('Google sync is disabled.');
+  await prisma.calendarEvent.update({
+    where: { id },
+    data: { syncStatus: 'NOT_SYNCED', syncAttempts: 0, syncNextAt: systemClock.now() },
+  });
+  return detail(id);
 }
