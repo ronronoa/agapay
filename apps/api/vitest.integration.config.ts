@@ -19,6 +19,8 @@ if (testDbUrl) {
 // worker tests attempt network sends and time out. The database stays real
 // (TEST-01); only the outbound adapter is stubbed.
 process.env.EMAIL_PROVIDER = 'console';
+// Live credentials in .env must never make tests write to the operations calendar.
+process.env.GOOGLE_CALENDAR_ENABLED = 'false';
 
 export default defineConfig({
   test: {

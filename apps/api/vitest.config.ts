@@ -13,6 +13,7 @@ export default defineConfig({
       JWT_ACCESS_SECRET: 'test-secret-test-secret-test-secret-1234',
       WEB_ORIGIN: 'http://localhost:5173',
       EMAIL_PROVIDER: 'console',
+      GOOGLE_CALENDAR_ENABLED: 'false',
     },
   },
 });
