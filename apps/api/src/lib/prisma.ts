@@ -8,9 +8,9 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export const prisma =
   globalForPrisma.prisma ??
-  new PrismaClient({
-    log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  });
+  // Prisma's automatic error output can embed query values. Services and the
+  // HTTP boundary record safe codes/correlation through the application logger.
+  new PrismaClient({ log: [] });
 
 if (env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;

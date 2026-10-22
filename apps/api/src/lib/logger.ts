@@ -31,4 +31,6 @@ export const logger = pino({
   level: isProduction ? env.LOG_LEVEL : 'debug',
   redact: { paths: redactPaths, censor: '[redacted]' },
   base: { service: 'agapay-api' },
+  // Error messages/stacks may embed query values or provider credentials.
+  serializers: { err: () => ({ type: 'Error' }) },
 });

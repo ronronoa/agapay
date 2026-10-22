@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
 import {
   CalendarDays,
+  ChartNoAxesCombined,
   HandCoins,
   LayoutDashboard,
   ListChecks,
+  Mail,
   Megaphone,
   MessageSquare,
   Package,
@@ -21,6 +23,7 @@ type AdminNavItem = DashboardNavItem & { badgeKey?: 'pendingRequests' | undefine
 
 const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true, section: 'Overview' },
+  { to: '/admin/reports', label: 'Reports', icon: ChartNoAxesCombined, section: 'Overview' },
   { to: '/admin/campaigns', label: 'Campaigns', icon: Megaphone, section: 'Relief operations' },
   { to: '/admin/donations', label: 'Donations', icon: HandCoins, section: 'Relief operations' },
   {
@@ -39,6 +42,7 @@ const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
     section: 'Relief operations',
   },
   { to: '/admin/messages', label: 'Messages', icon: MessageSquare, section: 'Support' },
+  { to: '/admin/emails', label: 'Email operations', icon: Mail, section: 'Administration' },
   { to: '/admin/users', label: 'Users', icon: Users, roles: ['ADMIN'], section: 'Administration' },
   { to: '/admin/item-types', label: 'Item Types', icon: ListChecks, section: 'Administration' },
   { to: '/admin/audit-logs', label: 'Audit Log', icon: ScrollText, section: 'Administration' },

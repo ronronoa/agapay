@@ -51,20 +51,16 @@ export function TrackAssistancePage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-screen bg-bg border">
       <LandingHeader />
-      <main className="mx-auto w-full max-w-xl px-4 py-10 sm:px-6">
-        <div className="space-y-6">
+      <main className="mx-auto w-full max-w-xl px-4 py-10 sm:px-6 min-h-screen flex items-center justify-center">
+        <div className="space-y-6 px-4 py-10 bg-surface border border-border rounded-xs">
           <PageHeader
             title="Track your request"
             description="Enter the code from your confirmation email together with the email address you registered with."
           />
 
-          <form
-            onSubmit={onLookup}
-            noValidate
-            className="space-y-4 rounded-lg border border-border bg-surface p-5 shadow-card"
-          >
+          <form onSubmit={onLookup} noValidate className="space-y-4 rounded-lg py-5 px-4">
             <Field control={control} name="code" label="Tracking or reference code">
               {(field) => (
                 <Input
@@ -76,6 +72,7 @@ export function TrackAssistancePage() {
                   onBlur={field.onBlur}
                   aria-invalid={field.invalid}
                   aria-describedby={field.describedBy}
+                  className="py-4 rounded-xs"
                 />
               )}
             </Field>
@@ -92,6 +89,7 @@ export function TrackAssistancePage() {
                   onBlur={field.onBlur}
                   aria-invalid={field.invalid}
                   aria-describedby={field.describedBy}
+                  className="rounded-xs"
                 />
               )}
             </Field>

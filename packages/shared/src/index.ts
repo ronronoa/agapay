@@ -15,5 +15,6 @@ export * from './list.js';
 export * from './notifications.js';
 export * from './public.js';
 export * from './requests.js';
+export * from './reports.js';
 export * from './status-messages.js';
 export * from './users.js';

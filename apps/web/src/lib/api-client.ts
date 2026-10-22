@@ -6,7 +6,7 @@ import { clearSession, getAccessToken, setSession } from './session.js';
 const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? '';
 
 // The one request that rotates the refresh token, which must not recurse.
-let refreshInFlight: Promise<boolean> | null = null;
+let refreshInFlight: { token: string | null; promise: Promise<string | null> } | null = null;
 
 /**
  * Fetch hands back untyped JSON. Every call site parses this with a shared Zod
@@ -73,41 +73,51 @@ async function rawFetch(path: string, options: RequestOptions): Promise<Response
 
 // Concurrent 401s must trigger one rotation, not one each: the first refresh
 // invalidates the cookie the others would have used (SEC-02).
-async function refreshAccessToken(): Promise<boolean> {
-  refreshInFlight ??= (async () => {
+async function refreshAccessToken(): Promise<string | null> {
+  const token = getAccessToken();
+  if (refreshInFlight?.token === token) return refreshInFlight.promise;
+  const promise = (async () => {
     try {
       const response = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'x-requested-with': 'agapay' },
       });
-      if (!response.ok) return false;
+      if (!response.ok) return null;
 
       const parsed = accessTokenResponseSchema.safeParse(await response.json().catch(() => null));
-      if (!parsed.success) return false;
+      if (!parsed.success || getAccessToken() !== token) return null;
       setSession(parsed.data.data.accessToken, parsed.data.data.user);
-      return true;
+      return parsed.data.data.accessToken;
     } catch {
-      return false;
+      return null;
     } finally {
-      refreshInFlight = null;
+      if (refreshInFlight?.token === token) refreshInFlight = null;
     }
   })();
-  return refreshInFlight;
+  refreshInFlight = { token, promise };
+  return promise;
 }
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const response = await rawFetch(path, options);
+  const token = getAccessToken();
+  let response = await rawFetch(path, options);
 
-  if (response.status === 401 && getAccessToken() !== null && path !== '/api/v1/auth/refresh') {
-    if (await refreshAccessToken()) {
-      const retried = await rawFetch(path, options);
-      if (!retried.ok) throw await toApiError(retried);
-      return (await retried.json()) as T;
+  if (
+    response.status === 401 &&
+    token !== null &&
+    getAccessToken() === token &&
+    path !== '/api/v1/auth/refresh'
+  ) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed !== null && getAccessToken() === refreshed) {
+      response = await rawFetch(path, options);
+    } else if (getAccessToken() === token) {
+      clearSession();
     }
-    clearSession();
   }
 
   if (!response.ok) throw await toApiError(response);
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }

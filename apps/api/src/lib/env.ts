@@ -64,6 +64,7 @@ const envSchema = z
     SEED_ADMIN_PASSWORD: passwordSchema.optional(),
     SEED_STAFF_EMAIL: emailSchema.optional(),
     SEED_STAFF_PASSWORD: passwordSchema.optional(),
+    SEED_DEMO_PASSWORD: passwordSchema.optional(),
   })
   .refine(
     (v) =>
@@ -91,7 +92,7 @@ const envSchema = z
       path: ['SMTP_PASS'],
     },
   )
-  .refine((value) => value.EMAIL_DAILY_LIMIT <= 100, {
+  .refine((value) => value.EMAIL_PROVIDER !== 'resend' || value.EMAIL_DAILY_LIMIT <= 100, {
     message: 'EMAIL_DAILY_LIMIT above 100 exceeds the Resend free-tier daily cap',
     path: ['EMAIL_DAILY_LIMIT'],
   })

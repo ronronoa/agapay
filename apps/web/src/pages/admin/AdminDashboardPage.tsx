@@ -4,7 +4,6 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CalendarDays,
-  Printer,
   ScrollText,
   ShieldCheck,
   UserCheck,
@@ -186,16 +185,13 @@ function DashboardContents({ dashboard }: { dashboard: AdminDashboardResponse['d
             {new Date(dashboard.asOf).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}.
           </p>
         </div>
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title="Printing arrives in a later release"
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-border px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+        <Link
+          to="/admin/reports"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-border px-4 text-sm font-medium hover:bg-surface-alt"
         >
-          <Printer className="h-4 w-4" aria-hidden="true" />
-          Print report
-        </button>
+          <ScrollText className="h-4 w-4" aria-hidden="true" />
+          View reports
+        </Link>
       </div>
 
       <Reveal className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -10,10 +10,26 @@ if (existsSync(rootEnvPath)) {
 // The suite writes and deletes rows, so it gets its own throwaway database
 // instead of the dev one, and localhost instead of a remote pooler.
 const testDbUrl = process.env.TEST_DATABASE_URL;
-if (testDbUrl) {
-  process.env.DATABASE_URL = testDbUrl;
-  process.env.DIRECT_URL = testDbUrl;
+if (!testDbUrl)
+  throw new Error(
+    'TEST_DATABASE_URL is required; integration tests never use the runtime database.',
+  );
+let testDatabase: URL;
+try {
+  testDatabase = new URL(testDbUrl);
+} catch {
+  throw new Error('TEST_DATABASE_URL must be a PostgreSQL URL for a dedicated test database.');
 }
+if (
+  !['postgres:', 'postgresql:'].includes(testDatabase.protocol) ||
+  !/(^|[_-])test([_-]|$)/i.test(testDatabase.pathname.slice(1))
+) {
+  throw new Error(
+    'Integration database name must contain a separate test marker, such as agapay_test.',
+  );
+}
+process.env.DATABASE_URL = testDbUrl;
+process.env.DIRECT_URL = testDbUrl;
 
 // Tests must never call a real email provider: a live Resend key in .env makes
 // worker tests attempt network sends and time out. The database stays real

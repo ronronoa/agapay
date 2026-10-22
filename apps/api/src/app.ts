@@ -1,11 +1,12 @@
 import { settingsRouter } from './modules/settings/settings.routes.js';
+import { reportsRouter } from './modules/reports/reports.routes.js';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
-import { ErrorCode, ERROR_STATUS } from '@agapay/shared';
+import { rateLimitHandler } from './lib/http/rate-limit.js';
 import { env } from './lib/env.js';
 import { logger } from './lib/logger.js';
 import { errorMiddleware, notFoundHandler } from './lib/http/error-middleware.js';
@@ -45,7 +46,10 @@ export function createApp() {
   // Must run before pino so every log line can read the id from AsyncLocalStorage.
   app.use((req, res, next) => {
     const inbound = req.headers['x-request-id'];
-    const requestId = typeof inbound === 'string' && inbound.length > 0 ? inbound : newRequestId();
+    const requestId =
+      typeof inbound === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(inbound)
+        ? inbound
+        : newRequestId();
     res.setHeader('x-request-id', requestId);
     requestContext.run({ requestId }, next);
   });
@@ -54,12 +58,22 @@ export function createApp() {
     pinoHttp({
       logger,
       genReqId: () => getRequestId() ?? newRequestId(),
+      serializers: {
+        // Search filters and URLs can contain contacts or tokens. Log outcomes only.
+        req: (req: { id?: unknown; method?: unknown }) => ({ id: req.id, method: req.method }),
+        res: (res: { statusCode?: unknown }) => ({ statusCode: res.statusCode }),
+      },
       // Log the outcome, never the payload: public and chat bodies carry personal data.
       autoLogging: {
         ignore: (req) => req.url === '/api/v1/health',
       },
     }),
   );
+
+  app.use('/api/v1', (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
 
   // API-03: cap body size before any parser does work on it.
   app.use(express.json({ limit: '100kb' }));
@@ -72,16 +86,7 @@ export function createApp() {
       limit: 300,
       standardHeaders: 'draft-7',
       legacyHeaders: false,
-      handler: (_req, res) => {
-        res.setHeader('Retry-After', '900');
-        res.status(ERROR_STATUS.RATE_LIMITED).json({
-          error: {
-            code: ErrorCode.RATE_LIMITED,
-            message: 'Too many requests. Please try again later.',
-            requestId: getRequestId() ?? 'unknown',
-          },
-        });
-      },
+      handler: rateLimitHandler,
     }),
   );
 
@@ -91,6 +96,7 @@ export function createApp() {
   app.use('/api/v1/item-types', itemTypesRouter);
   app.use('/api/v1/users', usersRouter);
   app.use('/api/v1/settings', settingsRouter);
+  app.use('/api/v1/reports', reportsRouter);
   app.use('/api/v1/donations', donationsRouter);
   app.use('/api/v1/inventory', inventoryRouter);
   app.use('/api/v1/assistance-requests', requestsRouter);

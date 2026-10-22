@@ -16,6 +16,7 @@ export async function verifyTurnstileToken(
   remoteIp: string | undefined,
 ): Promise<boolean> {
   if (env.TURNSTILE_SECRET === undefined) {
+    if (env.NODE_ENV === 'production') return false;
     if (!warnedOnce) {
       warnedOnce = true;
       logger.warn('TURNSTILE_SECRET is not set; public form bot protection is off');

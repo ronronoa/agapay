@@ -8,6 +8,8 @@ import { AuditLogPage } from '../pages/admin/AuditLogPage';
 import { ItemTypesPage } from '../pages/admin/ItemTypesPage';
 import { UsersPage } from '../pages/admin/UsersPage';
 import { SettingsPage } from '../pages/admin/SettingsPage';
+import { ReportsPage } from '../pages/admin/ReportsPage';
+import { EmailOperationsPage } from '../pages/admin/EmailOperationsPage';
 import { ForbiddenPage } from '../pages/ForbiddenPage';
 import { HomePage } from '../pages/HomePage';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
@@ -184,7 +186,8 @@ const router = createBrowserRouter([
       },
       { path: 'distributions', element: <DistributionsPage /> },
       { path: 'calendar', element: <CalendarPage /> },
-      { path: 'reports', element: <NotImplementedPage title="Reports" /> },
+      { path: 'reports', element: <ReportsPage /> },
+      { path: 'emails', element: <EmailOperationsPage /> },
       {
         path: 'settings',
         element: (

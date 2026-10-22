@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 import { cloneElement, isValidElement, useId, type ReactNode } from 'react';
-import { apiFetch } from '../../lib/api-client';
+import { fetchAll } from '../../lib/fetch-all';
+export { fetchAll } from '../../lib/fetch-all';
 
 export const selectClass = 'w-full rounded-md border border-input bg-surface px-3 py-2 text-sm';
 export const eventTypes = ['DONATION_DRIVE', 'COLLECTION', 'DISTRIBUTION'] as const;
@@ -40,25 +41,6 @@ export function Field({ label, children }: { label: string; children: ReactNode 
       {isValidElement<{ id?: string }>(children) ? cloneElement(children, { id }) : children}
     </div>
   );
-}
-export async function fetchAll<T>(
-  path: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
-): Promise<T[]> {
-  const items: T[] = [];
-  let page = 1;
-  let total = 0;
-  do {
-    const separator = path.includes('?') ? '&' : '?';
-    const parsed = z
-      .object({ data: z.object({ items: z.array(schema), total: z.number() }) })
-      .parse(await apiFetch<unknown>(`${path}${separator}page=${page}&pageSize=100`));
-    items.push(...parsed.data.items);
-    total = parsed.data.total;
-    if (parsed.data.items.length === 0) break;
-    page++;
-  } while (items.length < total);
-  return items;
 }
 export function useAll<T>(
   path: string,

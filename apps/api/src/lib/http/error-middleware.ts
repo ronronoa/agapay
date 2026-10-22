@@ -44,15 +44,34 @@ function mapPrismaError(err: unknown): { code: string; status: number } | undefi
   }
 }
 
-// Unknown errors become 500 with a request ID and no detail; the stack and the
-// driver message stay in the logs (TS-15, hard rule 9).
-export const errorMiddleware: ErrorRequestHandler = (err, _req, res, next) => {
+// Unknown errors become 500 with correlation only; driver messages may contain
+// submitted values and must not enter request logs (TS-15, hard rule 9).
+export const errorMiddleware: ErrorRequestHandler = (err: unknown, _req, res, next) => {
   if (res.headersSent) {
     next(err);
     return;
   }
 
   const requestId = getRequestId() ?? 'unknown';
+
+  if (
+    typeof err === 'object' &&
+    err !== null &&
+    'type' in err &&
+    (err.type === 'entity.parse.failed' || err.type === 'entity.too.large')
+  ) {
+    res.status(err.type === 'entity.too.large' ? 413 : 400).json({
+      error: {
+        code: ErrorCode.VALIDATION_ERROR,
+        message:
+          err.type === 'entity.too.large'
+            ? 'Request body is too large.'
+            : 'Request body must be valid JSON.',
+        requestId,
+      },
+    } satisfies ErrorBody);
+    return;
+  }
 
   if (isAppError(err)) {
     logger.warn({ requestId, code: err.code, message: err.message }, 'request failed');
@@ -90,8 +109,8 @@ export const errorMiddleware: ErrorRequestHandler = (err, _req, res, next) => {
     return;
   }
 
-  // Unexpected: log everything, tell the client nothing.
-  logger.error({ requestId, err }, 'unhandled error');
+  // Database/parser errors may embed submitted values; retain only correlation.
+  logger.error({ requestId }, 'unhandled error');
   res.status(ERROR_STATUS.INTERNAL).json({
     error: {
       code: ErrorCode.INTERNAL,

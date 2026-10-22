@@ -40,7 +40,7 @@ const FOOTER_LINKS = [
 export function LandingFooter() {
   return (
     <footer className="w-full bg-pine-dark text-white">
-      <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-12">
           <div className="space-y-6 lg:col-span-4">
             <div>
@@ -90,7 +90,7 @@ export function LandingFooter() {
 
       {/* Bottom bar */}
       <div className="border-t border-white/10">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <p className="text-xs text-white/50">
             &copy; 2026 Agapay Community, Inc. All rights reserved.
           </p>

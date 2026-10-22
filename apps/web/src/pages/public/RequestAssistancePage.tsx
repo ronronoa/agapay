@@ -144,9 +144,6 @@ export function RequestAssistancePage() {
   const watchedCity = watch('city');
 
   const selectedCampaign = campaigns.find((campaign) => campaign.id === watchedCampaignId);
-  // Location is collected before the campaign is chosen, so the selects offer
-  // the areas served by any active campaign. A location outside them stays
-  // submittable: the API flags it for staff review (BR-REQ-07).
   const allAreas = campaigns.flatMap((campaign) => campaign.areas);
   const areaBarangays = [...new Set(allAreas.map((area) => area.barangay))].sort((a, b) =>
     a.localeCompare(b),
@@ -266,7 +263,6 @@ export function RequestAssistancePage() {
     });
   }
 
-  // Field names whose messages the error summary links to, in visual order.
   const STEP_FIELDS: Record<number, { name: keyof SubmitRequestInput; label: string }[]> = {
     0: [
       { name: 'fullName', label: 'Full name' },
@@ -357,7 +353,7 @@ export function RequestAssistancePage() {
 
             <section
               aria-label="Assistance request form"
-              className="mt-6 rounded-xl border border-border bg-surface p-6 shadow-card sm:p-8"
+              className="mt-6 rounded-xs border border-border bg-surface p-6 shadow-card sm:p-8"
             >
               <form onSubmit={(event) => void handleSubmit(onSubmit)(event)} noValidate>
                 <h2 ref={stepHeadingRef} tabIndex={-1} className="sr-only">
