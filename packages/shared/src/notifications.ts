@@ -10,6 +10,7 @@ const emailStatuses = [
 ] as const;
 
 const notificationTypes = [
+  NotificationType.SUPPORT_UNREAD,
   NotificationType.DONOR_VERIFY_EMAIL,
   NotificationType.DONOR_PASSWORD_RESET,
   NotificationType.DONATION_SUBMITTED,

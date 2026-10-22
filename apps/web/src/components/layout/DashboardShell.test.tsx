@@ -1,5 +1,6 @@
 import { cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { describe, expect, it, afterEach } from 'vitest';
 import type { AuthUserDto } from '@agapay/shared';
@@ -55,7 +56,13 @@ function renderShell(
     ],
     { initialEntries: [initialPath] },
   );
-  return render(<RouterProvider router={router} />);
+  return render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 }
 
 describe('DashboardShell', () => {
@@ -70,13 +77,11 @@ describe('DashboardShell', () => {
     expect(screen.getByText('Child content')).toBeInTheDocument();
   });
 
-  it('labels the not-yet-built topbar controls instead of faking them', () => {
+  it('omits global search while preserving notification and print controls', () => {
     renderShell();
-    const search = screen.getByPlaceholderText('Search…');
-    expect(search).toBeDisabled();
-    expect(search).toHaveAttribute('title', 'Dashboard search arrives in a later release');
+    expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.getByRole('button', { name: 'Print report' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /alerts/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /notifications/i })).toBeEnabled();
   });
 
   it('marks the active section without colour alone', () => {
@@ -84,7 +89,7 @@ describe('DashboardShell', () => {
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('shows a route-provided header title instead of the search cluster', () => {
+  it('shows a route-provided header title', () => {
     renderShell({ shellTitle: 'Dashboard' });
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Search…')).toBeNull();

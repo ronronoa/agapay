@@ -1,0 +1,514 @@
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  supportConversationResponseSchema,
+  supportListResponseSchema,
+  supportMessagesResponseSchema,
+  supportSendResponseSchema,
+  sendSupportMessageSchema,
+} from '@agapay/shared';
+import { apiFetch } from '../../lib/api-client';
+import { useApiQuery } from '../../lib/use-api-query';
+import { getUser } from '../../lib/session';
+import { PageHeader } from '../../components/layout/PageHeader';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/input';
+import { AsyncBoundary } from '../../components/ui/AsyncBoundary';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { Dialog, DialogTitle, DialogDescription, DialogFooter } from '../../components/ui/dialog';
+import { useLiveStatus } from './RealtimeProvider';
+
+type Draft = { body: string; clientMessageId: string };
+const selectClass = 'min-h-11 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm';
+export function SupportPage({ personnel }: { personnel: boolean }) {
+  const client = useQueryClient();
+  const status = useLiveStatus();
+  const [params, setParams] = useSearchParams();
+  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('');
+  const [unread, setUnread] = useState(false);
+  const [page, setPage] = useState(1);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [closing, setClosing] = useState<{ status: 'OPEN' | 'CLOSED'; revision: number } | null>(
+    null,
+  );
+  const [readRetry, setReadRetry] = useState(0);
+  const [visible, setVisible] = useState(document.visibilityState === 'visible');
+  const readThrough = useRef(new Map<string, number>());
+  const historyElement = useRef<HTMLOListElement>(null);
+  const [atBottom, setAtBottom] = useState(true);
+  const mine = useQuery({
+    queryKey: ['support', 'mine'],
+    enabled: !personnel,
+    queryFn: async () =>
+      supportConversationResponseSchema.parse(
+        await apiFetch('/api/v1/support/conversations', { method: 'POST' }),
+      ).data,
+  });
+  const selected = personnel ? (params.get('conversation') ?? '') : (mine.data?.id ?? '');
+  const list = useQuery({
+    queryKey: ['support', 'list', search, filter, unread, page],
+    enabled: personnel,
+    queryFn: async () =>
+      supportListResponseSchema.parse(
+        await apiFetch('/api/v1/support/conversations/search', {
+          method: 'POST',
+          body: {
+            q: search,
+            ...(filter ? { status: filter } : {}),
+            unread: String(unread),
+            page,
+            pageSize: 20,
+          },
+        }),
+      ),
+  });
+  const detail = useApiQuery(
+    ['support', 'detail', selected],
+    `/api/v1/support/conversations/${selected}`,
+    supportConversationResponseSchema,
+    { enabled: Boolean(selected) },
+  );
+  const history = useInfiniteQuery({
+    queryKey: ['support', 'messages', selected],
+    enabled: Boolean(selected),
+    initialPageParam: undefined as number | undefined,
+    queryFn: async ({ pageParam }) =>
+      supportMessagesResponseSchema.parse(
+        await apiFetch(
+          `/api/v1/support/conversations/${selected}/messages?pageSize=50${pageParam ? `&before=${pageParam}` : ''}`,
+        ),
+      ),
+    getNextPageParam: (last) => last.meta.nextBefore ?? undefined,
+  });
+  const messages =
+    history.data?.pages
+      .slice()
+      .reverse()
+      .flatMap((part) => part.data) ?? [];
+  const latest = messages.at(-1)?.sequence ?? 0;
+  useEffect(() => {
+    setAtBottom(true);
+  }, [selected]);
+  useEffect(() => {
+    if (atBottom && historyElement.current)
+      historyElement.current.scrollTop = historyElement.current.scrollHeight;
+  }, [latest, selected, atBottom]);
+  useEffect(() => {
+    const change = () => setVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', change);
+    return () => document.removeEventListener('visibilitychange', change);
+  }, []);
+  useEffect(() => {
+    if (
+      !selected ||
+      !visible ||
+      closing ||
+      !atBottom ||
+      latest <= (readThrough.current.get(selected) ?? 0)
+    )
+      return;
+    readThrough.current.set(selected, latest);
+    void apiFetch(`/api/v1/support/conversations/${selected}/read`, {
+      method: 'POST',
+      body: { sequence: latest },
+    })
+      .then(() => {
+        void client.invalidateQueries({ queryKey: ['in-app'] });
+      })
+      .catch(() => {
+        readThrough.current.delete(selected);
+        setError('Could not update read status. Refresh the conversation to retry.');
+      });
+  }, [selected, latest, visible, client, readRetry, atBottom, closing]);
+  const draft = drafts[selected];
+  async function send() {
+    if (!selected || busy) return;
+    const parsed = sendSupportMessageSchema.safeParse(draft);
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'Enter a message.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      supportSendResponseSchema.parse(
+        await apiFetch(`/api/v1/support/conversations/${selected}/messages`, {
+          method: 'POST',
+          body: parsed.data,
+        }),
+      );
+      setDrafts((previous) => {
+        const next = { ...previous };
+        if (next[selected]?.clientMessageId === parsed.data.clientMessageId) delete next[selected];
+        return next;
+      });
+      setNotice('Message sent.');
+      await client.invalidateQueries({ queryKey: ['support'] });
+      await client.invalidateQueries({ queryKey: ['in-app'] });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Message could not be sent. Retry with the same draft.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function changeStatus() {
+    if (!closing) return;
+    setBusy(true);
+    setError('');
+    try {
+      supportConversationResponseSchema.parse(
+        await apiFetch(`/api/v1/support/conversations/${selected}`, {
+          method: 'PATCH',
+          body: closing,
+        }),
+      );
+      setClosing(null);
+      setNotice('Conversation status updated.');
+      await client.invalidateQueries({ queryKey: ['support'] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update conversation.');
+      setClosing(null);
+      detail.refetch();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="min-w-0 space-y-5">
+      <PageHeader
+        title="Messages"
+        description={
+          personnel
+            ? 'A shared support inbox for donor conversations.'
+            : 'Contact the Agapay operations team about your donations.'
+        }
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm text-text-muted" role="status">
+          {status === 'Live'
+            ? 'Live updates connected'
+            : `${status} · messages stay saved; refresh to check for updates.`}
+        </p>
+        <Button
+          variant="accent"
+          className="min-h-11"
+          onClick={() => {
+            setError('');
+            readThrough.current.delete(selected);
+            setReadRetry((value) => value + 1);
+            void client.invalidateQueries({ queryKey: ['support'] });
+          }}
+        >
+          Refresh messages
+        </Button>
+      </div>
+      {notice && <p role="status">{notice}</p>}
+      {error && <p role="alert">{error}</p>}
+      {!personnel && mine.isPending && <p role="status">Opening your conversation…</p>}
+      {!personnel && mine.isError && (
+        <div role="alert">
+          <p>Could not open your conversation.</p>
+          <Button onClick={() => void mine.refetch()}>Try again</Button>
+        </div>
+      )}
+      <div className={`grid min-w-0 gap-4 ${personnel ? 'lg:grid-cols-3' : ''}`}>
+        {personnel && (
+          <section
+            aria-label="Donor conversations"
+            className="min-w-0 space-y-4 rounded-md border border-border bg-surface p-4"
+          >
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                setSearch(q.trim());
+                setPage(1);
+              }}
+              className="flex flex-wrap gap-2"
+            >
+              <label className="w-full text-sm">
+                Search donors
+                <Input value={q} maxLength={100} onChange={(event) => setQ(event.target.value)} />
+              </label>
+              <Button type="submit" variant="accent" className="min-h-11">
+                Search
+              </Button>
+            </form>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-sm">
+                Status
+                <select
+                  className={`${selectClass} ml-2`}
+                  value={filter}
+                  onChange={(event) => {
+                    setFilter(event.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">All</option>
+                  <option value="OPEN">Open</option>
+                  <option value="CLOSED">Closed</option>
+                </select>
+              </label>
+              <label className="inline-flex min-h-11 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={unread}
+                  onChange={(event) => {
+                    setUnread(event.target.checked);
+                    setPage(1);
+                  }}
+                />
+                Unread only
+              </label>
+            </div>
+            <AsyncBoundary
+              data={list.data ?? null}
+              error={list.isError ? 'Could not load conversations.' : null}
+              isPending={list.isPending}
+              onRetry={() => void list.refetch()}
+              emptyTitle="No conversations"
+              emptyDescription="Donor conversations will appear here."
+            >
+              {(data) => (
+                <>
+                  {!data.data.length && <p>No conversations match these filters.</p>}
+                  <ul className="space-y-2">
+                    {data.data.map((conversation) => (
+                      <li key={conversation.id}>
+                        <button
+                          type="button"
+                          aria-current={selected === conversation.id ? 'true' : undefined}
+                          className={`min-h-11 w-full break-words rounded-md border p-3 text-left ${selected === conversation.id ? 'border-primary bg-surface-alt' : 'border-border'}`}
+                          onClick={() => {
+                            setParams({ conversation: conversation.id });
+                            setError('');
+                            setNotice('');
+                          }}
+                        >
+                          <span className="block font-medium">{conversation.donorName}</span>
+                          <span className="block text-sm">
+                            {conversation.status === 'OPEN' ? 'Open' : 'Closed'} ·{' '}
+                            {conversation.unreadCount} unread
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <nav
+                    className="flex flex-wrap items-center gap-2"
+                    aria-label="Conversation pagination"
+                  >
+                    <Button
+                      variant="accent"
+                      disabled={page === 1}
+                      onClick={() => setPage(page - 1)}
+                    >
+                      Previous
+                    </Button>
+                    <span>Page {page}</span>
+                    <Button
+                      variant="accent"
+                      disabled={page * data.meta.pageSize >= data.meta.total}
+                      onClick={() => setPage(page + 1)}
+                    >
+                      Next
+                    </Button>
+                  </nav>
+                </>
+              )}
+            </AsyncBoundary>
+          </section>
+        )}
+        <section
+          aria-label="Conversation"
+          className={`min-w-0 rounded-md border border-border bg-surface p-4 ${personnel ? 'lg:col-span-2' : ''}`}
+        >
+          {!selected ? (
+            <p>Select a conversation to read and reply.</p>
+          ) : (
+            <>
+              <AsyncBoundary
+                data={detail.data?.data ?? null}
+                error={detail.error}
+                isPending={detail.isPending}
+                onRetry={detail.refetch}
+                emptyTitle="Conversation unavailable"
+                emptyDescription="Choose another conversation."
+              >
+                {(conversation) => (
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                    <div>
+                      <h2 className="font-display text-lg font-semibold">
+                        {personnel ? conversation.donorName : 'Agapay support'}
+                      </h2>
+                      <StatusBadge label={conversation.status === 'OPEN' ? 'Open' : 'Closed'} />
+                    </div>
+                    {personnel && (
+                      <Button
+                        variant="accent"
+                        className="min-h-11"
+                        disabled={busy}
+                        onClick={() =>
+                          setClosing({
+                            status: conversation.status === 'OPEN' ? 'CLOSED' : 'OPEN',
+                            revision: conversation.revision,
+                          })
+                        }
+                      >
+                        {conversation.status === 'OPEN'
+                          ? 'Close conversation'
+                          : 'Reopen conversation'}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </AsyncBoundary>
+              {history.isPending ? (
+                <p role="status">Loading messages…</p>
+              ) : history.isError ? (
+                <div role="alert">
+                  <p>Could not load messages.</p>
+                  <Button onClick={() => void history.refetch()}>Try again</Button>
+                </div>
+              ) : (
+                <>
+                  {history.hasNextPage && (
+                    <Button
+                      variant="accent"
+                      disabled={history.isFetchingNextPage}
+                      onClick={() => void history.fetchNextPage()}
+                    >
+                      {history.isFetchingNextPage
+                        ? 'Loading older messages…'
+                        : 'Load older messages'}
+                    </Button>
+                  )}
+                  {!messages.length && (
+                    <p className="py-6 text-text-muted">
+                      No messages yet. Send a message to start the conversation.
+                    </p>
+                  )}
+                  <ol
+                    ref={historyElement}
+                    tabIndex={0}
+                    onScroll={(event) => {
+                      const element = event.currentTarget;
+                      setAtBottom(
+                        element.scrollHeight - element.scrollTop - element.clientHeight < 40,
+                      );
+                    }}
+                    aria-label="Message history"
+                    className="my-4 max-h-[55dvh] space-y-3 overflow-y-auto overscroll-contain"
+                  >
+                    {messages.map((message) => (
+                      <li
+                        key={message.id}
+                        className={`max-w-xl rounded-md border border-border p-3 ${message.senderId === getUser()?.id ? 'ml-auto bg-surface-alt' : 'mr-auto bg-surface'}`}
+                      >
+                        <p className="text-sm font-semibold">
+                          {message.senderName} ·{' '}
+                          {message.senderRole === 'DONOR' ? 'Donor' : 'Operations'}
+                        </p>
+                        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                          {message.body}
+                        </p>
+                        <time className="text-xs text-text-muted" dateTime={message.createdAt}>
+                          {new Date(message.createdAt).toLocaleString('en-PH', {
+                            timeZone: 'Asia/Manila',
+                          })}
+                        </time>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              )}
+              {detail.data && (
+                <form
+                  className="space-y-2 border-t border-border pt-4"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void send();
+                  }}
+                >
+                  <label className="block text-sm font-medium" htmlFor="support-message">
+                    Message
+                  </label>
+                  <textarea
+                    id="support-message"
+                    value={draft?.body ?? ''}
+                    maxLength={4000}
+                    rows={3}
+                    disabled={busy || (personnel && detail.data.data.status === 'CLOSED')}
+                    className="w-full rounded-md border border-border-strong bg-surface p-3"
+                    onChange={(event) => {
+                      setError('');
+                      setDrafts((previous) => ({
+                        ...previous,
+                        [selected]: {
+                          body: event.target.value,
+                          clientMessageId: crypto.randomUUID(),
+                        },
+                      }));
+                    }}
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-text-muted">
+                      {draft?.body.length ?? 0}/4000 · Drafts stay here while Messages is open.
+                    </p>
+                    <Button
+                      type="submit"
+                      className="min-h-11"
+                      disabled={
+                        busy ||
+                        !draft?.body.trim() ||
+                        (personnel && detail.data.data.status === 'CLOSED')
+                      }
+                    >
+                      {busy ? 'Saving…' : error ? 'Retry send' : 'Send message'}
+                    </Button>
+                  </div>
+                  {!personnel && detail.data.data.status === 'CLOSED' && (
+                    <p className="text-sm text-text-muted">
+                      Sending a new message reopens your conversation.
+                    </p>
+                  )}
+                </form>
+              )}
+            </>
+          )}
+        </section>
+      </div>
+      <Dialog
+        open={closing !== null}
+        onOpenChange={(open) => {
+          if (!busy && !open) setClosing(null);
+        }}
+      >
+        <DialogTitle>Update conversation status?</DialogTitle>
+        <DialogDescription>
+          History stays available. A new donor message reopens a closed conversation.
+        </DialogDescription>
+        {error && <p role="alert">{error}</p>}
+        <DialogFooter>
+          <Button variant="accent" disabled={busy} onClick={() => setClosing(null)}>
+            Cancel
+          </Button>
+          <Button disabled={busy} onClick={() => void changeStatus()}>
+            {busy ? 'Saving…' : 'Confirm status change'}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </div>
+  );
+}

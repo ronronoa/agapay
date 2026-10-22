@@ -115,6 +115,7 @@ enum EmailStatus {
 }
 
 enum NotificationType {
+  SUPPORT_UNREAD
   DONOR_VERIFY_EMAIL
   DONOR_PASSWORD_RESET
   DONATION_SUBMITTED
@@ -152,6 +153,13 @@ model User {
   authTokens    AuthToken[]
   donations     Donation[]
   auditLogs     AuditLog[]
+  supportConversation SupportConversation? @relation("SupportDonor")
+  supportMessages SupportMessage[] @relation("SupportSender")
+  supportReads SupportRead[]
+  inboxNotifications InboxNotification[]
+  liveState LiveState?
+  liveEvents LiveEvent[]
+  socketTickets SocketTicket[]
 
   @@index([role, isActive])
 }
@@ -168,6 +176,7 @@ model RefreshToken {
   ipHash    String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  socketTickets SocketTicket[]
 
   @@index([userId])
   @@index([familyId])
@@ -449,6 +458,7 @@ model CalendarEvent {
 
   @@index([campaignId, startAt])
   @@index([type, startAt])
+  @@index([syncStatus, syncNextAt], map: "CalendarEvent_sync_due")
 }
 
 model Distribution {
@@ -506,11 +516,102 @@ model EmailNotification {
   relatedRequestId  String?
   relatedDonationId String?
   createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  inAppProcessedAt DateTime? @db.Timestamptz(3)
 
   request  AssistanceRequest? @relation(fields: [relatedRequestId], references: [id])
   donation Donation?          @relation(fields: [relatedDonationId], references: [id])
 
   @@index([status, scheduledFor, priority])
+  @@index([inAppProcessedAt])
+}
+
+model SupportConversation {
+  id String @id @default(uuid())
+  donorId String @unique
+  status String @default("OPEN")
+  revision Int @default(1)
+  lastSequence Int @default(0)
+  lastMessageAt DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  donor User @relation("SupportDonor", fields: [donorId], references: [id])
+  messages SupportMessage[]
+  reads SupportRead[]
+  @@index([lastMessageAt, id])
+}
+
+model SupportMessage {
+  id String @id @default(uuid())
+  conversationId String
+  sequence Int
+  senderId String
+  senderRole String
+  clientMessageId String
+  body String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  conversation SupportConversation @relation(fields: [conversationId], references: [id])
+  sender User @relation("SupportSender", fields: [senderId], references: [id])
+  @@unique([conversationId, sequence])
+  @@unique([conversationId, senderId, clientMessageId])
+}
+
+model SupportRead {
+  conversationId String
+  userId String
+  lastSequence Int @default(0)
+  lastEmailAt DateTime? @db.Timestamptz(3)
+  conversation SupportConversation @relation(fields: [conversationId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  @@id([conversationId, userId])
+}
+
+model InboxNotification {
+  id String @id @default(uuid())
+  userId String
+  kind String
+  title String
+  conversationId String?
+  messageSequence Int?
+  donationId String?
+  dedupeKey String @unique
+  readAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user User @relation(fields: [userId], references: [id])
+  @@index([userId, createdAt, id])
+  @@index([userId, readAt])
+}
+
+model LiveState {
+  userId String @id
+  revision Int @default(0)
+  user User @relation(fields: [userId], references: [id])
+}
+
+model LiveEvent {
+  id String @id @default(uuid())
+  userId String
+  sequence Int
+  topic String
+  conversationId String?
+  publishedAt DateTime? @db.Timestamptz(3)
+  attempts Int @default(0)
+  nextAt DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user User @relation(fields: [userId], references: [id])
+  @@unique([userId, sequence])
+  @@index([publishedAt, nextAt])
+}
+
+model SocketTicket {
+  hash String @id
+  userId String
+  sessionId String
+  role String
+  expiresAt DateTime @db.Timestamptz(3)
+  authExpiresAt DateTime @db.Timestamptz(3)
+  usedAt DateTime? @db.Timestamptz(3)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session RefreshToken @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
 }
 
 model AuditLog {

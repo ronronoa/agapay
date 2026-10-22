@@ -23,7 +23,7 @@ export default defineConfig({
     // Proxying keeps the API same-origin in dev so the refresh cookie stays
     // first-party, which is what production does too (architecture.md section 5).
     proxy: {
-      '/api': { target: apiTarget, changeOrigin: true },
+      '/api': { target: apiTarget, changeOrigin: true, ws: true },
     },
   },
   build: {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getUser, subscribe } from '../../lib/session';
+import { RealtimeProvider } from '../../features/support/RealtimeProvider';
 
 export function SessionQueryProvider({ children }: { children: ReactNode }) {
   const user = useSyncExternalStore(subscribe, getUser);
@@ -22,7 +23,7 @@ export function SessionQueryProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => client.clear(), [client]);
   return (
     <QueryClientProvider key={identity} client={client}>
-      {children}
+      <RealtimeProvider>{children}</RealtimeProvider>
     </QueryClientProvider>
   );
 }

@@ -1,7 +1,8 @@
 import { NavLink, Outlet, useMatches, useLocation, matchPath } from 'react-router-dom';
 import { useSyncExternalStore, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Bell, ChevronDown, LogOut, Menu, Printer, Search, type LucideIcon } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, Printer, type LucideIcon } from 'lucide-react';
+import { NotificationBell } from '../../features/support/NotificationBell';
 import { getUser, subscribe } from '../../lib/session';
 import { logout } from '../../lib/auth-api';
 import { Dialog, DialogTitle } from '../ui/dialog';
@@ -199,20 +200,7 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
             </button>
 
             {title === undefined ? (
-              <div className="relative hidden w-full max-w-md sm:block">
-                <Search
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted"
-                  aria-hidden="true"
-                />
-                <input
-                  type="search"
-                  placeholder="Search…"
-                  disabled
-                  aria-disabled="true"
-                  title="Dashboard search arrives in a later release"
-                  className="w-full rounded-full border border-border-strong bg-surface py-2 pl-9 pr-4 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </div>
+              <div className="flex-1" />
             ) : (
               <h1 className="min-w-0 flex-1 truncate font-display text-xl font-bold tracking-tight">
                 {title}
@@ -232,16 +220,7 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
               </button>
             ) : null}
 
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              title="Updates arrive by email for now"
-              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-border px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Bell className="h-4 w-4" aria-hidden="true" />
-              Alerts
-            </button>
+            <NotificationBell />
 
             {user === null ? null : (
               <div className="flex shrink-0 items-center gap-2 rounded-full border border-border bg-surface py-1 pl-1 pr-4">

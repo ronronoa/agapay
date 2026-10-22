@@ -12,6 +12,7 @@ import {
 const secret = new TextEncoder().encode(env.JWT_ACCESS_SECRET);
 
 export interface AccessTokenClaims {
+  expiresAt: number;
   userId: string;
   role: UserRoleType;
 }
@@ -43,8 +44,9 @@ export async function verifyAccessToken(token: string, clock: Clock): Promise<Ac
       algorithms: ['HS256'],
       currentDate: clock.now(),
     });
-    if (!payload.sub || !isUserRole(payload.role)) throw new Error('malformed access token claims');
-    return { userId: payload.sub, role: payload.role };
+    if (!payload.sub || !isUserRole(payload.role) || typeof payload.exp !== 'number')
+      throw new Error('malformed access token claims');
+    return { userId: payload.sub, role: payload.role, expiresAt: payload.exp * 1000 };
   } catch {
     throw unauthenticated('Your session has expired. Please sign in again.');
   }

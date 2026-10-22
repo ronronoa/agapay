@@ -1,4 +1,5 @@
 import { get as getSettings } from '../modules/settings/settings.service.js';
+import { isSupportEmailCurrent } from '../modules/support/inbox.service.js';
 import { renderScheduleEmail, isScheduleCurrent } from '../modules/notifications/schedule-email.js';
 import { scanReminders } from './reminders.js';
 import { syncCalendars } from './calendar-sync.js';
@@ -114,7 +115,10 @@ async function drainBatch(
     }
 
     try {
-      if (!(await isScheduleCurrent(row.templateData, clock))) {
+      if (
+        !(await isScheduleCurrent(row.templateData, clock)) ||
+        !(await isSupportEmailCurrent(row.templateData))
+      ) {
         await prisma.emailNotification.update({
           where: { id: row.id },
           data: { status: 'SUPPRESSED' },

@@ -265,6 +265,20 @@ export function renderEmail(
           `We will email you once our team reviews it.`,
       };
     }
+    case 'SUPPORT_UNREAD': {
+      const path = field(templateData, 'conversationPath');
+      if (!/^\/(donor|admin)\/messages\?conversation=[0-9a-f-]{36}$/.test(path))
+        throw internal('Support link is malformed.');
+      const url = new URL(path, webOrigin).toString();
+      return {
+        subject: 'You have an unread Agapay support message',
+        html: shell(
+          paragraph('You have an unread support message. Sign in to Agapay to read and reply.') +
+            `<p><a href="${escapeHtml(url)}">Open Messages</a></p>`,
+        ),
+        text: `You have an unread support message. Sign in to Agapay to read and reply: ${url}`,
+      };
+    }
     case 'DONATION_VERIFIED': {
       const name = field(templateData, 'name');
       const referenceNumber = field(templateData, 'referenceNumber');

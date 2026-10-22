@@ -97,6 +97,7 @@ export const EmailStatus = defineEnum([
 export type EmailStatus = (typeof EmailStatus)[keyof typeof EmailStatus];
 
 export const NotificationType = defineEnum([
+  'SUPPORT_UNREAD',
   'DONOR_VERIFY_EMAIL',
   'DONOR_PASSWORD_RESET',
   'DONATION_SUBMITTED',

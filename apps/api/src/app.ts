@@ -1,4 +1,6 @@
 import { settingsRouter } from './modules/settings/settings.routes.js';
+import { supportRouter } from './modules/support/support.routes.js';
+import { socketTicketRouter } from './modules/support/socket-ticket.routes.js';
 import { reportsRouter } from './modules/reports/reports.routes.js';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -91,6 +93,8 @@ export function createApp() {
   );
 
   app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/auth/realtime-ticket', socketTicketRouter);
+  app.use('/api/v1/support', supportRouter);
   app.use('/api/v1/audit-logs', auditRouter);
   app.use('/api/v1/campaigns', campaignsRouter);
   app.use('/api/v1/item-types', itemTypesRouter);
