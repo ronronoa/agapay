@@ -1,7 +1,7 @@
-import { NavLink, Outlet, useMatches } from 'react-router-dom';
+import { NavLink, Outlet, useMatches, useLocation, matchPath } from 'react-router-dom';
 import { useSyncExternalStore, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Bell, LogOut, Menu, Printer, Search, type LucideIcon } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Menu, Printer, Search, type LucideIcon } from 'lucide-react';
 import { getUser, subscribe } from '../../lib/session';
 import { logout } from '../../lib/auth-api';
 import { Dialog, DialogTitle } from '../ui/dialog';
@@ -13,6 +13,7 @@ export interface DashboardNavItem {
   icon?: LucideIcon | undefined;
   end?: boolean | undefined;
   badge?: number | undefined;
+  section?: string | undefined;
   // Omitted = every signed-in role. Set to hide sections a role may not open,
   // so the nav never offers a link that ends at the forbidden page.
   roles?: readonly string[] | undefined;
@@ -55,10 +56,19 @@ interface SidebarBodyProps {
 }
 
 function SidebarBody({ items, user, onNavigate, onLogoutRequest }: SidebarBodyProps) {
+  const { pathname } = useLocation();
   const closeProps = onNavigate === undefined ? {} : { onClick: onNavigate };
+  const groups = new Map<string, DashboardNavItem[]>();
+  for (const item of items) {
+    if (item.roles !== undefined && (user === null || !item.roles.includes(user.role))) continue;
+    const section = item.section ?? '';
+    const group = groups.get(section) ?? [];
+    group.push(item);
+    groups.set(section, group);
+  }
   return (
     <>
-      <div className="flex items-center gap-3 px-5 pb-6 pt-6">
+      <div className="flex shrink-0 items-center gap-3 px-5 py-5">
         <span
           aria-hidden="true"
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-sm font-semibold"
@@ -73,36 +83,68 @@ function SidebarBody({ items, user, onNavigate, onLogoutRequest }: SidebarBodyPr
         </div>
       </div>
 
-      <nav aria-label="Dashboard" className="flex flex-1 flex-col gap-1 px-3">
-        {items
-          .filter(
-            (item) => item.roles === undefined || (user !== null && item.roles.includes(user.role)),
-          )
-          .map((item) => {
-            const Icon: LucideIcon | undefined = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                {...(item.end === true ? { end: true as const } : {})}
-                {...closeProps}
-                className={({ isActive }) => navClass(isActive)}
-              >
-                {Icon === undefined ? null : (
-                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                )}
-                <span className="truncate">{item.label}</span>
-                {item.badge === undefined ? null : (
-                  <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">
-                    {item.badge}
-                  </span>
-                )}
-              </NavLink>
+      <nav
+        aria-label="Dashboard"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 pb-3"
+      >
+        {[...groups].map(([section, group]) => {
+          const links = (
+            <div className="space-y-1">
+              {group.map((item) => {
+                const Icon: LucideIcon | undefined = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    {...(item.end === true ? { end: true as const } : {})}
+                    {...closeProps}
+                    className={({ isActive }) => navClass(isActive)}
+                  >
+                    {Icon === undefined ? null : (
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    )}
+                    <span className="truncate">{item.label}</span>
+                    {item.badge === undefined ? null : (
+                      <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">
+                        {item.badge}
+                      </span>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          );
+          if (section === 'Administration') {
+            const active = group.some(
+              (item) => matchPath({ path: item.to, end: item.end ?? false }, pathname) !== null,
             );
-          })}
+            // Reopen on route changes even if the native disclosure was manually closed.
+            return (
+              <details
+                key={active ? `${section}:${pathname}` : section}
+                open={active || undefined}
+                className="group"
+              >
+                <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-md px-3 text-xs font-semibold text-white/90 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white [&::-webkit-details-marker]:hidden">
+                  {section}
+                  <ChevronDown className="h-4 w-4 group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                {links}
+              </details>
+            );
+          }
+          return (
+            <div key={section}>
+              {section && (
+                <h2 className="mb-1 px-3 text-xs font-semibold text-white/90">{section}</h2>
+              )}
+              {links}
+            </div>
+          );
+        })}
       </nav>
 
-      <div className="p-3">
+      <div className="shrink-0 border-t border-white/10 p-3">
         <button
           type="button"
           onClick={onLogoutRequest}
@@ -227,7 +269,7 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
 
       <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
         <DialogTitle className="sr-only">Menu</DialogTitle>
-        <div className="-mx-2 flex flex-col">
+        <div className="-mx-2 flex h-[65dvh] max-h-[40rem] min-h-0 flex-col rounded-md bg-primary-subtle text-surface">
           <SidebarBody
             items={items}
             user={user}

@@ -42,11 +42,11 @@ import { VerifyRequestPage } from '../pages/public/VerifyRequestPage';
 const ADMIN_ROLES = ['ADMIN', 'STAFF'] as const;
 
 const DONOR_NAV_ITEMS = [
-  { to: '/donor', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/donor/activity', label: 'Activity', icon: Activity },
-  { to: '/donor/campaign', label: 'Campaign', icon: Megaphone },
-  { to: '/donor/messages', label: 'Messages', icon: MessageSquare },
-  { to: '/donor/settings', label: 'Settings', icon: Settings },
+  { to: '/donor', label: 'Dashboard', icon: LayoutDashboard, end: true, section: 'My donations' },
+  { to: '/donor/campaign', label: 'Campaigns', icon: Megaphone, section: 'My donations' },
+  { to: '/donor/activity', label: 'Donation activity', icon: Activity, section: 'My donations' },
+  { to: '/donor/messages', label: 'Messages', icon: MessageSquare, section: 'Account' },
+  { to: '/donor/settings', label: 'Settings', icon: Settings, section: 'Account' },
 ] as const;
 
 // Groups are declared now so the shell and guards have a stable shape, but every
