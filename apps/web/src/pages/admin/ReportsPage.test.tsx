@@ -163,7 +163,8 @@ describe('ReportsPage', () => {
     fireEvent.click(pending);
     await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
     const printable = document.querySelector('.report-print-root');
-    expect(printable).toHaveAttribute('hidden');
+    // Tailwind's hidden-attribute reset would keep the report invisible in print.
+    expect(printable).not.toHaveAttribute('hidden');
     expect(printable).toHaveTextContent('Inventory');
     expect(printable).toHaveTextContent('Campaign 100');
     expect(printable).toHaveTextContent('2026-11-01 to 2026-11-30');

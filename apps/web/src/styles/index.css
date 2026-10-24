@@ -2,6 +2,11 @@
 @import 'tailwindcss';
 @import './tokens.css';
 
+/* Avoid the hidden attribute: Tailwind's layered !important reset wins in print. */
+.report-print-root {
+  display: none;
+}
+
 @media print {
   @page {
     margin: 12mm;
@@ -17,7 +22,7 @@
     overflow: visible;
   }
 
-  .report-print-root[hidden] {
+  .report-print-root {
     display: block !important;
     color: black;
     background: white;

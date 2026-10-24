@@ -29,7 +29,7 @@ export function ReportPrint({
     };
   }, [onFinish]);
   return createPortal(
-    <article hidden className="report-print-root" aria-label="Printable report">
+    <article className="report-print-root" aria-label="Printable report">
       <header className="mb-6">
         <h1 className="font-display text-2xl font-semibold">Agapay relief operations report</h1>
         <p>
