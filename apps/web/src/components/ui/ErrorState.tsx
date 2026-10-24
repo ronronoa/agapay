@@ -1,20 +1,33 @@
+import { RefreshCcw } from 'lucide-react';
+import { Alert, AlertTitle, AlertDescription } from './alert';
+import { Button } from './Button';
+import { Spinner } from './spinner';
+
 export interface ErrorStateProps {
   message: string;
   onRetry: () => void;
+  isRetrying?: boolean;
 }
 
-export function ErrorState({ message, onRetry }: ErrorStateProps) {
+export function ErrorState({ message, onRetry, isRetrying = false }: ErrorStateProps) {
   return (
-    <div role="alert" className="rounded-md border border-border bg-surface px-6 py-10 text-center">
-      <p className="font-medium">Something went wrong</p>
-      <p className="mx-auto mt-1 max-w-md text-sm text-text-muted">{message}</p>
-      <button
-        type="button"
+    <Alert className="items-center px-6 py-10 text-center">
+      <AlertTitle>Something went wrong</AlertTitle>
+      <AlertDescription className="max-w-md">{message}</AlertDescription>
+      <Button
+        variant="outline"
         onClick={onRetry}
-        className="mt-4 inline-flex items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt"
+        disabled={isRetrying}
+        aria-busy={isRetrying}
+        className="mt-3"
       >
-        Try again
-      </button>
-    </div>
+        {isRetrying ? (
+          <Spinner aria-hidden="true" data-icon="inline-start" />
+        ) : (
+          <RefreshCcw aria-hidden="true" data-icon="inline-start" />
+        )}
+        {isRetrying ? 'Retrying…' : 'Try again'}
+      </Button>
+    </Alert>
   );
 }

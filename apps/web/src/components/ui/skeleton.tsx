@@ -5,7 +5,7 @@ export function Skeleton({ className, ...rest }: HTMLAttributes<HTMLDivElement>)
   return (
     <div
       aria-hidden="true"
-      className={cn('animate-pulse rounded-md bg-border', className)}
+      className={cn('motion-safe:animate-pulse rounded-md bg-border', className)}
       {...rest}
     />
   );

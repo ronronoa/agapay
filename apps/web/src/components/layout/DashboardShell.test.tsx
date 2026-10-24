@@ -2,10 +2,12 @@ import { cleanup, render, screen, fireEvent, waitFor, within } from '@testing-li
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, afterEach, vi } from 'vitest';
 import type { AuthUserDto } from '@agapay/shared';
 import { clearSession, setSession } from '../../lib/session';
 import { DashboardShell, type DashboardNavItem } from './DashboardShell';
+import * as authApi from '../../lib/auth-api';
+import { toast } from 'sonner';
 
 const ITEMS: readonly DashboardNavItem[] = [
   { to: '/donor', label: 'Dashboard', end: true },
@@ -33,6 +35,7 @@ function staffer(): AuthUserDto {
 afterEach(() => {
   cleanup();
   clearSession();
+  vi.restoreAllMocks();
 });
 
 function renderShell(
@@ -77,10 +80,10 @@ describe('DashboardShell', () => {
     expect(screen.getByText('Child content')).toBeInTheDocument();
   });
 
-  it('omits global search while preserving notification and print controls', () => {
+  it('omits global search and the inactive print shortcut while preserving notifications', () => {
     renderShell();
     expect(screen.queryByRole('searchbox')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Print report' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Print report' })).toBeNull();
     expect(screen.getByRole('button', { name: /notifications/i })).toBeEnabled();
   });
 
@@ -186,6 +189,31 @@ describe('Dashboard menu groups', () => {
 });
 
 describe('DashboardShell logout confirmation', () => {
+  it('keeps confirmation pending and prevents duplicate logout requests', async () => {
+    const success = vi.spyOn(toast, 'success');
+    let finish: (() => void) | undefined;
+    const logout = vi.spyOn(authApi, 'logout').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    setSession('token', staffer());
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
+    const pending = screen.getByRole('button', { name: 'Logging out…' });
+    expect(pending).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Stay signed in' })).toBeDisabled();
+    fireEvent.click(pending);
+    expect(logout).toHaveBeenCalledOnce();
+    expect(success).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByText('Log out?')).toBeInTheDocument();
+    finish?.();
+    await waitFor(() => expect(screen.queryByText('Log out?')).toBeNull());
+    expect(success).toHaveBeenCalledWith('Signed out on this device.');
+  });
   it('asks before ending the session', async () => {
     setSession('token', staffer());
     renderShell();
@@ -195,5 +223,57 @@ describe('DashboardShell logout confirmation', () => {
     expect(screen.getByRole('button', { name: 'Stay signed in' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Stay signed in' }));
     await waitFor(() => expect(screen.queryByText('Log out?')).toBeNull());
+  });
+});
+
+describe('Shell account and navigation controls', () => {
+  it.each(['ADMIN', 'STAFF', 'DONOR'] as const)(
+    'shows only permitted account shortcuts for %s',
+    async (role) => {
+      setSession('token', { ...staffer(), role });
+      renderShell();
+      const header = screen.getByRole('banner');
+      expect(within(header).queryByRole('link', { name: 'Reports' }) !== null).toBe(
+        role !== 'DONOR',
+      );
+      const trigger = screen.getByRole('button', { name: 'Account menu for Sam Staff' });
+      fireEvent.keyDown(trigger, { key: 'Enter' });
+      const menu = await screen.findByRole('menu');
+      expect(within(menu).getByRole('menuitem', { name: 'Dashboard' })).toHaveAttribute(
+        'href',
+        role === 'DONOR' ? '/donor' : '/admin',
+      );
+      if (role === 'STAFF')
+        expect(within(menu).queryByRole('menuitem', { name: 'Settings' })).toBeNull();
+      else
+        expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveAttribute(
+          'href',
+          role === 'DONOR' ? '/donor/settings' : '/admin/settings',
+        );
+      fireEvent.click(within(menu).getByRole('menuitem', { name: 'Log out' }));
+      expect(await screen.findByText('Log out?')).toBeInTheDocument();
+      expect(screen.queryByRole('menu')).toBeNull();
+    },
+  );
+
+  it('closes the navigation Sheet before opening logout confirmation', async () => {
+    setSession('token', staffer());
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Menu' });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Log Out' }));
+    await screen.findByText('Log out?');
+    expect(screen.queryByRole('dialog', { name: 'Menu' })).toBeNull();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('closes the navigation Sheet with Escape and returns focus to its trigger', async () => {
+    renderShell();
+    const trigger = screen.getByRole('button', { name: 'Open menu' });
+    fireEvent.click(trigger);
+    const drawer = await screen.findByRole('dialog', { name: 'Menu' });
+    fireEvent.keyDown(drawer, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Menu' })).toBeNull());
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 });

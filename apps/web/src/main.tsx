@@ -4,6 +4,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './routes/router';
 import './styles/index.css';
+import { Toaster } from './components/ui/sonner';
 
 // One factory so a cache key is never typed twice (rules.md §6).
 export const queryKeys = {
@@ -23,5 +24,6 @@ createRoot(container).render(
         <App />
       </MotionConfig>
     </SessionQueryProvider>
+    <Toaster />
   </StrictMode>,
 );

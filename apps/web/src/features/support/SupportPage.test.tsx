@@ -72,6 +72,32 @@ afterEach(() => {
   clearSession();
 });
 describe('SupportPage', () => {
+  it('disables sending while a message is pending and saves the draft once', async () => {
+    let finish: ((value: unknown) => void) | undefined;
+    vi.mocked(apiFetch).mockImplementation((path, options) => {
+      if (path.endsWith('/messages') && options?.method === 'POST')
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      return Promise.resolve(result(path));
+    });
+    show();
+    const input = await screen.findByLabelText('Message');
+    fireEvent.change(input, { target: { value: 'Pending message' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    const pending = screen.getByRole('button', { name: 'Saving…' });
+    expect(pending).toBeDisabled();
+    expect(pending).toHaveAttribute('aria-busy', 'true');
+    expect(input).toBeDisabled();
+    fireEvent.click(pending);
+    expect(
+      vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith('/messages')),
+    ).toHaveLength(1);
+    finish?.({ data: { ...message, body: 'Pending message' } });
+    await screen.findByText('Message sent.');
+    expect(input).toHaveValue('');
+    expect(input).toBeEnabled();
+  });
   it('renders safe text history, opens the donor conversation and marks visible messages read', async () => {
     const view = show();
     expect(await screen.findByText('<script>plain text only</script>')).toBeInTheDocument();

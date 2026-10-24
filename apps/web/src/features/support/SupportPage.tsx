@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
+import { RefreshCcw, Search, Send } from 'lucide-react';
 import {
   supportConversationResponseSchema,
   supportListResponseSchema,
@@ -18,12 +19,18 @@ import { AsyncBoundary } from '../../components/ui/AsyncBoundary';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Dialog, DialogTitle, DialogDescription, DialogFooter } from '../../components/ui/dialog';
 import { useLiveStatus } from './RealtimeProvider';
+import { Textarea } from '../../components/ui/textarea';
+import { Spinner } from '../../components/ui/spinner';
+import { Alert, AlertDescription } from '../../components/ui/alert';
+import { Skeleton } from '../../components/ui/skeleton';
+import { cn } from '../../lib/utils';
 
 type Draft = { body: string; clientMessageId: string };
 const selectClass = 'min-h-11 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm';
 export function SupportPage({ personnel }: { personnel: boolean }) {
   const client = useQueryClient();
   const status = useLiveStatus();
+  const refreshing = useIsFetching({ queryKey: ['support'] }) > 0;
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState('');
   const [search, setSearch] = useState('');
@@ -202,7 +209,8 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
         </p>
         <Button
           variant="accent"
-          className="min-h-11"
+          disabled={refreshing}
+          aria-busy={refreshing}
           onClick={() => {
             setError('');
             readThrough.current.delete(selected);
@@ -210,11 +218,24 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
             void client.invalidateQueries({ queryKey: ['support'] });
           }}
         >
-          Refresh messages
+          <RefreshCcw
+            data-icon="inline-start"
+            aria-hidden="true"
+            className={cn(refreshing && 'motion-safe:animate-spin')}
+          />
+          {refreshing ? 'Refreshing messages…' : 'Refresh messages'}
         </Button>
       </div>
-      {notice && <p role="status">{notice}</p>}
-      {error && <p role="alert">{error}</p>}
+      {notice && (
+        <Alert role="status" variant="success">
+          <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      )}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       {!personnel && mine.isPending && <p role="status">Opening your conversation…</p>}
       {!personnel && mine.isError && (
         <div role="alert">
@@ -240,7 +261,17 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                 Search donors
                 <Input value={q} maxLength={100} onChange={(event) => setQ(event.target.value)} />
               </label>
-              <Button type="submit" variant="accent" className="min-h-11">
+              <Button
+                type="submit"
+                variant="accent"
+                disabled={list.isFetching}
+                aria-busy={list.isFetching}
+              >
+                {list.isFetching ? (
+                  <Spinner aria-hidden="true" data-icon="inline-start" />
+                ) : (
+                  <Search aria-hidden="true" data-icon="inline-start" />
+                )}
                 Search
               </Button>
             </form>
@@ -276,6 +307,7 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
               data={list.data ?? null}
               error={list.isError ? 'Could not load conversations.' : null}
               isPending={list.isPending}
+              isRefreshing={list.isFetching && !list.isPending}
               onRetry={() => void list.refetch()}
               emptyTitle="No conversations"
               emptyDescription="Donor conversations will appear here."
@@ -342,6 +374,7 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                 data={detail.data?.data ?? null}
                 error={detail.error}
                 isPending={detail.isPending}
+                isRefreshing={detail.isFetching && !detail.isPending}
                 onRetry={detail.refetch}
                 emptyTitle="Conversation unavailable"
                 emptyDescription="Choose another conversation."
@@ -375,7 +408,11 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                 )}
               </AsyncBoundary>
               {history.isPending ? (
-                <p role="status">Loading messages…</p>
+                <div role="status" aria-busy="true" className="flex flex-col gap-3 py-4">
+                  <Skeleton className="h-16 w-3/4" />
+                  <Skeleton className="ml-auto h-16 w-3/4" />
+                  <span className="text-sm text-text-muted">Loading messages…</span>
+                </div>
               ) : history.isError ? (
                 <div role="alert">
                   <p>Could not load messages.</p>
@@ -444,13 +481,12 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                   <label className="block text-sm font-medium" htmlFor="support-message">
                     Message
                   </label>
-                  <textarea
+                  <Textarea
                     id="support-message"
                     value={draft?.body ?? ''}
                     maxLength={4000}
                     rows={3}
                     disabled={busy || (personnel && detail.data.data.status === 'CLOSED')}
-                    className="w-full rounded-md border border-border-strong bg-surface p-3"
                     onChange={(event) => {
                       setError('');
                       setDrafts((previous) => ({
@@ -474,7 +510,13 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                         !draft?.body.trim() ||
                         (personnel && detail.data.data.status === 'CLOSED')
                       }
+                      aria-busy={busy}
                     >
+                      {busy ? (
+                        <Spinner aria-hidden="true" data-icon="inline-start" />
+                      ) : (
+                        <Send aria-hidden="true" data-icon="inline-start" />
+                      )}
                       {busy ? 'Saving…' : error ? 'Retry send' : 'Send message'}
                     </Button>
                   </div>
@@ -504,7 +546,8 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
           <Button variant="accent" disabled={busy} onClick={() => setClosing(null)}>
             Cancel
           </Button>
-          <Button disabled={busy} onClick={() => void changeStatus()}>
+          <Button disabled={busy} aria-busy={busy} onClick={() => void changeStatus()}>
+            {busy && <Spinner aria-hidden="true" data-icon="inline-start" />}
             {busy ? 'Saving…' : 'Confirm status change'}
           </Button>
         </DialogFooter>

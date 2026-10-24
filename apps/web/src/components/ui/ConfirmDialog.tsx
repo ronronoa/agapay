@@ -1,5 +1,6 @@
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from './dialog';
 import { Button } from './Button';
+import { Spinner } from './spinner';
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -9,6 +10,8 @@ export interface ConfirmDialogProps {
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
+  pending?: boolean;
+  pendingLabel?: string;
 }
 
 // One confirmation shell for irreversible or session-ending actions, so no
@@ -21,22 +24,25 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   onConfirm,
   onCancel,
+  pending = false,
+  pendingLabel = 'Working…',
 }: ConfirmDialogProps) {
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) onCancel();
+        if (!next && !pending) onCancel();
       }}
     >
       <DialogTitle>{title}</DialogTitle>
       <DialogDescription>{description}</DialogDescription>
       <DialogFooter>
-        <Button type="button" variant="accent" onClick={onCancel}>
+        <Button type="button" variant="accent" disabled={pending} onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button type="button" onClick={onConfirm}>
-          {confirmLabel}
+        <Button type="button" disabled={pending} aria-busy={pending} onClick={onConfirm}>
+          {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+          {pending ? pendingLabel : confirmLabel}
         </Button>
       </DialogFooter>
     </Dialog>

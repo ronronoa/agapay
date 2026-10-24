@@ -6,6 +6,7 @@ import type * as ApiModule from '../../lib/api-client';
 import { apiFetch } from '../../lib/api-client';
 import { NotificationBell } from './NotificationBell';
 import { clearSession, setSession } from '../../lib/session';
+import { toast } from 'sonner';
 
 vi.mock('../../lib/api-client', async () => ({
   ...(await vi.importActual<typeof ApiModule>('../../lib/api-client')),
@@ -13,10 +14,12 @@ vi.mock('../../lib/api-client', async () => ({
 }));
 afterEach(() => {
   clearSession();
+  vi.restoreAllMocks();
   vi.resetAllMocks();
 });
 describe('NotificationBell', () => {
   it('shows persistent unread counts, saved history and an explicit mark-read action', async () => {
+    const success = vi.spyOn(toast, 'success');
     const id = '00000000-0000-4000-8000-000000000001';
     const conversationId = '00000000-0000-4000-8000-000000000002';
     setSession('token', {
@@ -71,18 +74,64 @@ describe('NotificationBell', () => {
       'href',
       `/donor/messages?conversation=${conversationId}`,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Mark read' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as read' }));
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Mark read' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('button', { name: 'Mark as read' })).not.toBeInTheDocument(),
     );
     expect(apiFetch).toHaveBeenCalledWith(`/api/v1/support/notifications/${id}/read`, {
       method: 'POST',
     });
+    await waitFor(() => expect(success).toHaveBeenCalledWith('Notification marked as read.'));
     fireEvent.keyDown(panel, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Notifications' })).toBeNull());
     await waitFor(() => expect(bell).toHaveFocus());
     fireEvent.click(bell);
     fireEvent.click(await screen.findByRole('link', { name: 'New support message' }));
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Notifications' })).toBeNull());
+  });
+  it('keeps a failed read available for retry and gives error feedback without a success toast', async () => {
+    const success = vi.spyOn(toast, 'success');
+    const error = vi.spyOn(toast, 'error');
+    vi.mocked(apiFetch).mockImplementation((_path, options) =>
+      options?.method === 'POST'
+        ? Promise.reject(new Error('Offline'))
+        : Promise.resolve({
+            data: [
+              {
+                id: '00000000-0000-4000-8000-000000000001',
+                conversationId: null,
+                donationId: null,
+                kind: 'OPERATION',
+                title: 'Update',
+                readAt: null,
+                createdAt: '2026-10-24T00:00:00Z',
+              },
+            ],
+            meta: { unreadCount: 1, nextCursor: null },
+          }),
+    );
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({
+            defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+          })
+        }
+      >
+        <MemoryRouter>
+          <NotificationBell />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications (1 unread)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as read' }));
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        'Could not mark this notification as read. Please try again.',
+      ),
+    );
+    expect(success).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Mark as read' })).toBeEnabled();
+    expect(screen.getByText('Unread', { exact: true })).toBeInTheDocument();
   });
 });
