@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCcw, Search, Send } from 'lucide-react';
+import { ArrowLeft, RefreshCcw, Search, Send } from 'lucide-react';
 import {
   supportConversationResponseSchema,
   supportListResponseSchema,
@@ -24,9 +24,43 @@ import { Spinner } from '../../components/ui/spinner';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Skeleton } from '../../components/ui/skeleton';
 import { cn } from '../../lib/utils';
+import { Avatar, AvatarFallback } from '../../components/ui/avatar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
+import { NativeSelect } from '../../components/ui/native-select';
+import { Message, MessageContent, MessageHeader, MessageFooter } from '../../components/ui/message';
+import { Bubble, BubbleContent } from '../../components/ui/bubble';
+import { Marker, MarkerContent } from '../../components/ui/marker';
+import {
+  MessageScrollerProvider,
+  MessageScroller,
+  MessageScrollerViewport,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerButton,
+  useMessageScrollerScrollable,
+} from '../../components/ui/message-scroller';
 
 type Draft = { body: string; clientMessageId: string };
-const selectClass = 'min-h-11 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm';
+const day = (value: string) =>
+  new Date(value).toLocaleDateString('en-PH', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+const initials = (name: string) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+function ReaderPosition({ onChange }: { onChange: (atEnd: boolean) => void }) {
+  const { end } = useMessageScrollerScrollable();
+  useEffect(() => onChange(!end), [end, onChange]);
+  return null;
+}
 export function SupportPage({ personnel }: { personnel: boolean }) {
   const client = useQueryClient();
   const status = useLiveStatus();
@@ -47,7 +81,6 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
   const [readRetry, setReadRetry] = useState(0);
   const [visible, setVisible] = useState(document.visibilityState === 'visible');
   const readThrough = useRef(new Map<string, number>());
-  const historyElement = useRef<HTMLOListElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   const mine = useQuery({
     queryKey: ['support', 'mine'],
@@ -102,10 +135,6 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
   useEffect(() => {
     setAtBottom(true);
   }, [selected]);
-  useEffect(() => {
-    if (atBottom && historyElement.current)
-      historyElement.current.scrollTop = historyElement.current.scrollHeight;
-  }, [latest, selected, atBottom]);
   useEffect(() => {
     const change = () => setVisible(document.visibilityState === 'visible');
     document.addEventListener('visibilitychange', change);
@@ -192,47 +221,55 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
     }
   }
   return (
-    <div className="min-w-0 space-y-5">
-      <PageHeader
-        title="Messages"
-        description={
-          personnel
-            ? 'A shared support inbox for donor conversations.'
-            : 'Contact the Agapay operations team about your donations.'
-        }
-      />
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface">
+      <div className="sr-only">
+        <PageHeader
+          title="Messages"
+          description={
+            personnel
+              ? 'A shared support inbox for donor conversations.'
+              : 'Contact the Agapay operations team about your donations.'
+          }
+        />
+      </div>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2">
         <p className="text-sm text-text-muted" role="status">
           {status === 'Live'
             ? 'Live updates connected'
             : `${status} · messages stay saved; refresh to check for updates.`}
         </p>
-        <Button
-          variant="accent"
-          disabled={refreshing}
-          aria-busy={refreshing}
-          onClick={() => {
-            setError('');
-            readThrough.current.delete(selected);
-            setReadRetry((value) => value + 1);
-            void client.invalidateQueries({ queryKey: ['support'] });
-          }}
-        >
-          <RefreshCcw
-            data-icon="inline-start"
-            aria-hidden="true"
-            className={cn(refreshing && 'motion-safe:animate-spin')}
-          />
-          {refreshing ? 'Refreshing messages…' : 'Refresh messages'}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Refresh messages"
+              disabled={refreshing}
+              aria-busy={refreshing}
+              onClick={() => {
+                setError('');
+                readThrough.current.delete(selected);
+                setReadRetry((value) => value + 1);
+                void client.invalidateQueries({ queryKey: ['support'] });
+              }}
+            >
+              <RefreshCcw
+                data-icon="inline-start"
+                aria-hidden="true"
+                className={cn(refreshing && 'motion-safe:animate-spin')}
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh messages</TooltipContent>
+        </Tooltip>
       </div>
       {notice && (
-        <Alert role="status" variant="success">
+        <Alert role="status" variant="success" className="shrink-0">
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="shrink-0">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
@@ -243,11 +280,19 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
           <Button onClick={() => void mine.refetch()}>Try again</Button>
         </div>
       )}
-      <div className={`grid min-w-0 gap-4 ${personnel ? 'lg:grid-cols-3' : ''}`}>
+      <div
+        className={cn(
+          'grid min-h-0 min-w-0 flex-1 overflow-hidden bg-surface',
+          personnel && 'lg:grid-cols-[20rem_minmax(0,1fr)]',
+        )}
+      >
         {personnel && (
           <section
             aria-label="Donor conversations"
-            className="min-w-0 space-y-4 rounded-md border border-border bg-surface p-4"
+            className={cn(
+              'min-h-0 min-w-0 flex-col gap-4 overflow-y-auto border-border p-4 lg:flex lg:border-r',
+              selected ? 'hidden' : 'flex',
+            )}
           >
             <form
               onSubmit={(event) => {
@@ -278,8 +323,7 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
             <div className="flex flex-wrap items-center gap-3">
               <label className="text-sm">
                 Status
-                <select
-                  className={`${selectClass} ml-2`}
+                <NativeSelect
                   value={filter}
                   onChange={(event) => {
                     setFilter(event.target.value);
@@ -289,7 +333,7 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                   <option value="">All</option>
                   <option value="OPEN">Open</option>
                   <option value="CLOSED">Closed</option>
-                </select>
+                </NativeSelect>
               </label>
               <label className="inline-flex min-h-11 items-center gap-2 text-sm">
                 <input
@@ -315,24 +359,48 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
               {(data) => (
                 <>
                   {!data.data.length && <p>No conversations match these filters.</p>}
-                  <ul className="space-y-2">
+                  <ul className="flex flex-col gap-2">
                     {data.data.map((conversation) => (
                       <li key={conversation.id}>
                         <button
                           type="button"
                           aria-current={selected === conversation.id ? 'true' : undefined}
-                          className={`min-h-11 w-full break-words rounded-md border p-3 text-left ${selected === conversation.id ? 'border-primary bg-surface-alt' : 'border-border'}`}
+                          className={cn(
+                            'flex min-h-20 w-full items-center gap-3 rounded-md border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+                            selected === conversation.id
+                              ? 'border-primary bg-surface-alt'
+                              : 'border-border hover:bg-surface-alt',
+                          )}
                           onClick={() => {
                             setParams({ conversation: conversation.id });
                             setError('');
                             setNotice('');
                           }}
                         >
-                          <span className="block font-medium">{conversation.donorName}</span>
-                          <span className="block text-sm">
-                            {conversation.status === 'OPEN' ? 'Open' : 'Closed'} ·{' '}
-                            {conversation.unreadCount} unread
+                          <Avatar className="size-11">
+                            <AvatarFallback>{initials(conversation.donorName)}</AvatarFallback>
+                          </Avatar>
+                          <span className="min-w-0 flex-1 break-words">
+                            <span className="block font-medium">{conversation.donorName}</span>
+                            <span className="block text-sm">
+                              {conversation.status === 'OPEN' ? 'Open' : 'Closed'} ·{' '}
+                              {conversation.unreadCount} unread
+                            </span>
+                            {conversation.lastMessageAt && (
+                              <time
+                                className="block text-xs text-text-muted"
+                                dateTime={conversation.lastMessageAt}
+                              >
+                                {day(conversation.lastMessageAt)}
+                              </time>
+                            )}
                           </span>
+                          {conversation.unreadCount > 0 && (
+                            <span
+                              className="size-2 shrink-0 rounded-full bg-primary"
+                              aria-hidden="true"
+                            />
+                          )}
                         </button>
                       </li>
                     ))}
@@ -364,8 +432,21 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
         )}
         <section
           aria-label="Conversation"
-          className={`min-w-0 rounded-md border border-border bg-surface p-4 ${personnel ? 'lg:col-span-2' : ''}`}
+          className={cn(
+            'min-h-0 min-w-0 flex-col overflow-hidden p-3 sm:p-4',
+            personnel && !selected ? 'hidden lg:flex' : 'flex',
+          )}
         >
+          {personnel && selected && (
+            <Button
+              variant="ghost"
+              className="mb-3 self-start lg:hidden"
+              onClick={() => setParams({})}
+            >
+              <ArrowLeft data-icon="inline-start" aria-hidden="true" />
+              Back to inbox
+            </Button>
+          )}
           {!selected ? (
             <p>Select a conversation to read and reply.</p>
           ) : (
@@ -380,12 +461,19 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                 emptyDescription="Choose another conversation."
               >
                 {(conversation) => (
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-                    <div>
-                      <h2 className="font-display text-lg font-semibold">
-                        {personnel ? conversation.donorName : 'Agapay support'}
-                      </h2>
-                      <StatusBadge label={conversation.status === 'OPEN' ? 'Open' : 'Closed'} />
+                  <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar className="size-11">
+                        <AvatarFallback>
+                          {personnel ? initials(conversation.donorName) : 'AA'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 break-words">
+                        <h2 className="font-display text-lg font-semibold">
+                          {personnel ? conversation.donorName : 'Agapay support'}
+                        </h2>
+                        <StatusBadge label={conversation.status === 'OPEN' ? 'Open' : 'Closed'} />
+                      </div>
                     </div>
                     {personnel && (
                       <Button
@@ -436,43 +524,61 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                       No messages yet. Send a message to start the conversation.
                     </p>
                   )}
-                  <ol
-                    ref={historyElement}
-                    tabIndex={0}
-                    onScroll={(event) => {
-                      const element = event.currentTarget;
-                      setAtBottom(
-                        element.scrollHeight - element.scrollTop - element.clientHeight < 40,
-                      );
-                    }}
-                    aria-label="Message history"
-                    className="my-4 max-h-[55dvh] space-y-3 overflow-y-auto overscroll-contain"
-                  >
-                    {messages.map((message) => (
-                      <li
-                        key={message.id}
-                        className={`max-w-xl rounded-md border border-border p-3 ${message.senderId === getUser()?.id ? 'ml-auto bg-surface-alt' : 'mr-auto bg-surface'}`}
-                      >
-                        <p className="text-sm font-semibold">
-                          {message.senderName} ·{' '}
-                          {message.senderRole === 'DONOR' ? 'Donor' : 'Operations'}
-                        </p>
-                        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                          {message.body}
-                        </p>
-                        <time className="text-xs text-text-muted" dateTime={message.createdAt}>
-                          {new Date(message.createdAt).toLocaleString('en-PH', {
-                            timeZone: 'Asia/Manila',
-                          })}
-                        </time>
-                      </li>
-                    ))}
-                  </ol>
+                  <MessageScrollerProvider key={selected} autoScroll defaultScrollPosition="end">
+                    <ReaderPosition onChange={setAtBottom} />
+                    <MessageScroller className="my-2">
+                      <MessageScrollerViewport aria-label="Message history">
+                        <MessageScrollerContent>
+                          {messages.map((message, index) => (
+                            <MessageScrollerItem
+                              messageId={message.id}
+                              key={message.id}
+                              className="flex flex-col gap-4"
+                            >
+                              {(!index ||
+                                day(messages[index - 1]?.createdAt ?? message.createdAt) !==
+                                  day(message.createdAt)) && (
+                                <Marker>
+                                  <MarkerContent>{day(message.createdAt)}</MarkerContent>
+                                </Marker>
+                              )}
+                              <Message align={message.senderId === getUser()?.id ? 'end' : 'start'}>
+                                <Avatar>
+                                  <AvatarFallback>{initials(message.senderName)}</AvatarFallback>
+                                </Avatar>
+                                <MessageContent>
+                                  <MessageHeader>
+                                    {message.senderName} ·{' '}
+                                    {message.senderRole === 'DONOR' ? 'Donor' : 'Operations'}
+                                  </MessageHeader>
+                                  <Bubble
+                                    align={message.senderId === getUser()?.id ? 'end' : 'start'}
+                                  >
+                                    <BubbleContent>{message.body}</BubbleContent>
+                                  </Bubble>
+                                  <MessageFooter>
+                                    <time dateTime={message.createdAt}>
+                                      {new Date(message.createdAt).toLocaleTimeString('en-PH', {
+                                        timeZone: 'Asia/Manila',
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                      })}
+                                    </time>
+                                  </MessageFooter>
+                                </MessageContent>
+                              </Message>
+                            </MessageScrollerItem>
+                          ))}
+                        </MessageScrollerContent>
+                      </MessageScrollerViewport>
+                      <MessageScrollerButton />
+                    </MessageScroller>
+                  </MessageScrollerProvider>
                 </>
               )}
               {detail.data && (
                 <form
-                  className="space-y-2 border-t border-border pt-4"
+                  className="mt-auto flex shrink-0 flex-col gap-2 border-t border-border pt-4"
                   onSubmit={(event) => {
                     event.preventDefault();
                     void send();
@@ -485,7 +591,8 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                     id="support-message"
                     value={draft?.body ?? ''}
                     maxLength={4000}
-                    rows={3}
+                    rows={2}
+                    className="max-h-32 resize-none"
                     disabled={busy || (personnel && detail.data.data.status === 'CLOSED')}
                     onChange={(event) => {
                       setError('');

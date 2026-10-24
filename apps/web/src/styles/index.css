@@ -2,6 +2,25 @@
 @import 'tailwindcss';
 @import './tokens.css';
 
+@layer components {
+  .sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    scrollbar-color: color-mix(in srgb, var(--color-surface) 40%, transparent) transparent;
+  }
+
+  .sidebar-scroll:hover,
+  .sidebar-scroll:focus-within {
+    scrollbar-color: color-mix(in srgb, var(--color-surface) 65%, transparent) transparent;
+  }
+
+  @media (forced-colors: active) {
+    .sidebar-scroll {
+      scrollbar-color: auto;
+    }
+  }
+}
+
 @layer base {
   html {
     color-scheme: light;

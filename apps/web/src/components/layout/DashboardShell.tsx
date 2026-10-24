@@ -113,7 +113,7 @@ function SidebarBody({
 
       <nav
         aria-label="Dashboard"
-        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-3 pb-3"
+        className="sidebar-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-3 pb-3"
       >
         {[...groups].map(([section, group]) => {
           const links = (
@@ -202,6 +202,9 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const { pathname } = useLocation();
+  const messagesLayout = ['/admin/messages', '/donor/messages'].some(
+    (path) => matchPath({ path, end: true }, pathname) !== null,
+  );
   const personnel = user?.role === 'ADMIN' || user?.role === 'STAFF';
   const section =
     items
@@ -229,7 +232,7 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
 
   return (
     <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-      <div className="flex min-h-dvh bg-bg">
+      <div className={cn('flex min-h-dvh bg-bg', messagesLayout && 'h-dvh overflow-hidden')}>
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:rounded-md focus:bg-surface focus:px-4 focus:py-2 focus:text-primary"
@@ -246,8 +249,8 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
           />
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="border-b border-border bg-surface">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <header className="shrink-0 border-b border-border bg-surface">
             <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3">
               <SheetTrigger asChild>
                 <Button
@@ -357,7 +360,14 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
             </div>
           </header>
 
-          <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
+          <main
+            id="main"
+            className={cn(
+              messagesLayout
+                ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+                : 'mx-auto w-full max-w-7xl flex-1 px-4 py-6',
+            )}
+          >
             {children ?? <Outlet />}
           </main>
         </div>

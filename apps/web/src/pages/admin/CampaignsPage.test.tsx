@@ -88,6 +88,91 @@ function renderPage(): ReturnType<typeof render> {
 }
 
 describe('CampaignsPage create dialog', () => {
+  async function openAndFill() {
+    renderPage();
+    await screen.findByText('Typhoon Relief');
+    fireEvent.click(screen.getByRole('button', { name: 'Add Campaign' }));
+    fireEvent.change(screen.getByLabelText('Campaign name *'), {
+      target: { value: 'Flood Response' },
+    });
+    fireEvent.change(screen.getByLabelText('Description *'), {
+      target: { value: 'Helping flooded barangays.' },
+    });
+    fireEvent.change(screen.getByLabelText('Start date *'), { target: { value: '2026-11-01' } });
+    fireEvent.change(screen.getByLabelText('End date *'), { target: { value: '2026-11-30' } });
+  }
+
+  it('blocks duplicate submissions and dismissal until creation finishes', async () => {
+    const fallback = vi.mocked(apiFetch).getMockImplementation();
+    if (!fallback) throw new Error('Missing fixture');
+    let finish: ((value: unknown) => void) | undefined;
+    vi.mocked(apiFetch).mockImplementation((path, options) =>
+      path === '/api/v1/campaigns' && options?.method === 'POST'
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : fallback(path, options),
+    );
+    await openAndFill();
+    fireEvent.click(screen.getByRole('button', { name: 'Create Campaign' }));
+    const pending = screen.getByRole('button', { name: 'Creating…' });
+    expect(pending).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Close campaign form' })).toBeDisabled();
+    expect(screen.getByLabelText('Campaign name *')).toBeDisabled();
+    fireEvent.click(pending);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    finish?.({ data: campaign({ status: 'DRAFT' }) });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(
+      vi
+        .mocked(apiFetch)
+        .mock.calls.filter(
+          ([path, options]) => path === '/api/v1/campaigns' && options?.method === 'POST',
+        ),
+    ).toHaveLength(1);
+  });
+
+  it('retries a failed image upload against the saved campaign without creating it twice', async () => {
+    const fallback = vi.mocked(apiFetch).getMockImplementation();
+    if (!fallback) throw new Error('Missing fixture');
+    let uploads = 0;
+    vi.mocked(apiFetch).mockImplementation((path, options) => {
+      if (path.endsWith('/image') && ++uploads === 1) return Promise.reject(new Error('Offline'));
+      return fallback(path, options);
+    });
+    await openAndFill();
+    fireEvent.change(screen.getByLabelText('Campaign image, optional'), {
+      target: { files: [new File(['fixture'], 'cover.png', { type: 'image/png' })] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Campaign' }));
+    const retry = await screen.findByRole('button', { name: 'Retry image upload' });
+    expect(screen.getByLabelText('Campaign name *')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(uploads).toBe(2);
+    expect(
+      vi
+        .mocked(apiFetch)
+        .mock.calls.filter(
+          ([path, options]) => path === '/api/v1/campaigns' && options?.method === 'POST',
+        ),
+    ).toHaveLength(1);
+  });
+
+  it('accepts priority goods without a target, matching the shared optional-target contract', async () => {
+    await openAndFill();
+    await screen.findByRole('option', { name: 'Food Packs (pack)' });
+    fireEvent.change(screen.getByLabelText('Priority item 1'), { target: { value: itemType.id } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Campaign' }));
+    await waitFor(() =>
+      expect(submittedBody).toMatchObject({
+        priorityItems: [{ itemTypeId: itemType.id, targetQuantity: null }],
+      }),
+    );
+  });
   it('lists campaigns with an add affordance and opens the dialog', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Typhoon Relief')).toBeInTheDocument());

@@ -72,6 +72,44 @@ afterEach(() => {
   clearSession();
 });
 describe('SupportPage', () => {
+  it('returns to the inbox and restores the selected conversation draft', async () => {
+    show(true);
+    const input = await screen.findByLabelText('Message');
+    fireEvent.change(input, { target: { value: 'Keep while browsing the inbox' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Back to inbox' }));
+    expect(screen.queryByLabelText('Message')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Fixture Donor/ }));
+    expect(await screen.findByLabelText('Message')).toHaveValue('Keep while browsing the inbox');
+  });
+  it('groups message dates in Manila and keeps the history keyboard reachable', async () => {
+    vi.mocked(apiFetch).mockImplementation((path) =>
+      Promise.resolve(
+        path.includes('/messages?')
+          ? {
+              data: [
+                message,
+                {
+                  ...message,
+                  id: '00000000-0000-4000-8000-000000000005',
+                  sequence: 2,
+                  body: 'Next Manila day',
+                  createdAt: '2026-10-22T16:05:00Z',
+                },
+              ],
+              meta: { nextBefore: null, nextAfter: null },
+            }
+          : result(path),
+      ),
+    );
+    show();
+    await screen.findByText('Next Manila day');
+    expect(screen.getByText('Oct 22, 2026')).toBeInTheDocument();
+    expect(screen.getByText('Oct 23, 2026')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Message history' })).toHaveAttribute(
+      'tabindex',
+      '0',
+    );
+  });
   it('disables sending while a message is pending and saves the draft once', async () => {
     let finish: ((value: unknown) => void) | undefined;
     vi.mocked(apiFetch).mockImplementation((path, options) => {
