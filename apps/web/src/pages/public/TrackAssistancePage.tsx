@@ -103,7 +103,7 @@ export function TrackAssistancePage() {
             <button
               type="submit"
               disabled={lookingUp}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
               {lookingUp ? 'Looking up…' : 'Track request'}
             </button>
@@ -112,7 +112,7 @@ export function TrackAssistancePage() {
           {result === null ? null : (
             <section
               aria-label="Request status"
-              className="space-y-4 rounded-lg border border-border bg-surface p-5 shadow-card"
+              className="space-y-4 rounded-sm border border-border bg-surface p-5 shadow-card"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-base font-semibold">{result.campaign.name}</h2>

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { CampaignStatus, campaignListResponseSchema, type CampaignDto } from '@agapay/shared';
 import { useApiQuery } from '../../lib/use-api-query';
@@ -28,23 +29,20 @@ export function CampaignsPage() {
     campaignListResponseSchema,
   );
   const [createOpen, setCreateOpen] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [activating, setActivating] = useState<CampaignDto | null>(null);
 
   function activate(campaign: CampaignDto): void {
-    setActionError(null);
     void apiFetch(`/api/v1/campaigns/${encodeURIComponent(campaign.id)}/activate`, {
       method: 'POST',
     })
       .then(() => {
-        setMessage(`Campaign "${campaign.name}" is now active.`);
+        toast.success(`Campaign "${campaign.name}" is now active.`);
         setActivating(null);
         query.refetch();
       })
       .catch((err: unknown) => {
         setActivating(null);
-        setActionError(
+        toast.error(
           err instanceof ApiClientError ? err.message : 'Activation failed. Please try again.',
         );
       });
@@ -121,18 +119,6 @@ export function CampaignsPage() {
         }
       />
 
-      {message === null ? null : (
-        <p role="status" className="text-sm font-medium">
-          {message}
-        </p>
-      )}
-
-      {actionError === null ? null : (
-        <p role="alert" className="text-sm font-medium">
-          {actionError}
-        </p>
-      )}
-
       <AsyncBoundary
         data={query.data?.data.items ?? null}
         error={query.error}
@@ -161,8 +147,7 @@ export function CampaignsPage() {
       <CreateCampaignDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(created) => {
-          setMessage(created);
+        onCreated={() => {
           query.refetch();
         }}
       />

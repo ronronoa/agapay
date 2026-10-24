@@ -2,6 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 import { cloneElement, isValidElement, useId, type ReactNode } from 'react';
 import { fetchAll } from '../../lib/fetch-all';
+import { Alert, AlertDescription } from '../../components/ui/alert';
+import { Button } from '../../components/ui/Button';
+import { FieldLayout } from '../../components/ui/field';
+import { Label } from '../../components/ui/label';
 export { fetchAll } from '../../lib/fetch-all';
 
 export const selectClass = 'w-full rounded-md border border-input bg-surface px-3 py-2 text-sm';
@@ -36,10 +40,10 @@ export function manilaIso(value: string): string {
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   const id = useId();
   return (
-    <div className="grid gap-1 text-sm font-medium">
-      <label htmlFor={id}>{label}</label>
+    <FieldLayout>
+      <Label htmlFor={id}>{label}</Label>
       {isValidElement<{ id?: string }>(children) ? cloneElement(children, { id }) : children}
-    </div>
+    </FieldLayout>
   );
 }
 export function useAll<T>(
@@ -70,12 +74,12 @@ export function QueryNotice({
     );
   if (error)
     return (
-      <div role="alert" className="py-4">
-        <p>{error.message}</p>
-        <button className="mt-2 underline" onClick={retry}>
+      <Alert variant="destructive">
+        <AlertDescription>{error.message}</AlertDescription>
+        <Button variant="outline" className="self-start" onClick={retry}>
           Try again
-        </button>
-      </div>
+        </Button>
+      </Alert>
     );
   return null;
 }

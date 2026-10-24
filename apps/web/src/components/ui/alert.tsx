@@ -6,8 +6,10 @@ const alertVariants = cva('flex flex-col gap-1 rounded-md border px-4 py-3 text-
   variants: {
     variant: {
       default: 'border-border bg-surface text-text',
-      destructive: 'border-error-text bg-surface text-error-text',
-      success: 'border-border-strong bg-surface text-text',
+      destructive: 'border-error-text bg-error-bg text-error-text',
+      success: 'border-success-text bg-success-bg text-success-text',
+      warning: 'border-warning-text bg-warning-bg text-warning-text',
+      info: 'border-primary-subtle bg-info-bg text-primary-dark',
     },
   },
   defaultVariants: { variant: 'default' },

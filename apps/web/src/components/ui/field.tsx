@@ -87,7 +87,7 @@ export function Field<T extends FieldValues>({
               </p>
             )}
             {message === undefined ? null : (
-              <p id={errorId} role="alert" className="mt-1 text-sm text-text-muted">
+              <p id={errorId} role="alert" className="mt-1 text-sm text-error-text">
                 {message}
               </p>
             )}

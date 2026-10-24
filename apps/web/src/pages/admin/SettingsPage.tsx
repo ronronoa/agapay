@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState, type FormEvent } from 'react';
 import { settingsResponseSchema, updateSettingsSchema } from '@agapay/shared';
 import { useApiQuery } from '../../lib/use-api-query';
@@ -11,7 +12,6 @@ export function SettingsPage() {
   const query = useApiQuery(['settings'], '/api/v1/settings', settingsResponseSchema);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   async function save(event: FormEvent<HTMLFormElement>, revision: number) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -28,15 +28,14 @@ export function SettingsPage() {
     }
     setBusy(true);
     setError('');
-    setNotice('');
     try {
       settingsResponseSchema.parse(
         await apiFetch('/api/v1/settings', { method: 'PATCH', body: parsed.data }),
       );
-      setNotice('Settings saved.');
+      toast.success('Settings saved.');
       query.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save settings.');
+      toast.error(err instanceof Error ? err.message : 'Could not save settings.');
     } finally {
       setBusy(false);
     }
@@ -51,7 +50,6 @@ export function SettingsPage() {
         Retention is a recorded policy only. Automatic anonymisation is not enabled. Credentials are
         configured outside this screen.
       </p>
-      {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error} Reload to review current values before retrying.</p>}
       <Button variant="accent" disabled={busy} onClick={() => void query.refetch()}>
         Reload settings

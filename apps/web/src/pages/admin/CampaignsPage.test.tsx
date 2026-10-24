@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ApiClientModule from '../../lib/api-client';
@@ -5,6 +6,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { CampaignsPage } from './CampaignsPage';
 import { apiFetch } from '../../lib/api-client';
 import type { CampaignDto } from '@agapay/shared';
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 vi.mock('../../lib/api-client', async () => {
   const actual = await vi.importActual<typeof ApiClientModule>('../../lib/api-client');
@@ -226,9 +229,7 @@ describe('CampaignsPage create dialog', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create Campaign' }));
 
-    await waitFor(() =>
-      expect(screen.getByText(/Campaign "Flood Response" created/)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Campaign created.'));
     const body = submittedBody as {
       areas?: { barangay?: string; city?: string; province?: string }[];
       priorityItems?: unknown[];
@@ -265,7 +266,9 @@ describe('CampaignsPage activation', () => {
         );
       expect(called).toBe(true);
     });
-    expect(await screen.findByText(/is now active/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Campaign "Draft Drive" is now active.'),
+    );
   });
 
   it('offers no activation for an already active campaign', async () => {

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -38,7 +39,6 @@ export function EmailOperationsPage() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const params = new URLSearchParams({ page: String(page), pageSize: '20' });
   if (status) params.set('status', status);
   if (type) params.set('type', type);
@@ -61,7 +61,6 @@ export function EmailOperationsPage() {
     if (busy || selected === null) return;
     setBusy(true);
     setError('');
-    setNotice('');
     try {
       const response = emailRetryResponseSchema.parse(
         await apiFetch(`/api/v1/notifications/emails/${selected.id}/retry`, { method: 'POST' }),
@@ -69,12 +68,13 @@ export function EmailOperationsPage() {
       setSelected(response.data);
       setConfirming(false);
       setPage(1);
-      setNotice(
+      toast.success(
         'Email requeued. The delivery worker will apply the usual limits and schedule checks.',
       );
       refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not retry this email.');
+      setError('Review current email details before retrying.');
+      toast.error(err instanceof Error ? err.message : 'Could not retry this email.');
       refresh();
     } finally {
       setBusy(false);
@@ -127,7 +127,6 @@ export function EmailOperationsPage() {
       <Button variant="accent" className="min-h-11" onClick={refresh}>
         Refresh emails and usage
       </Button>
-      {notice && <p role="status">{notice}</p>}
       <AsyncBoundary
         data={usage.data?.data ?? null}
         error={usage.error}
@@ -316,11 +315,6 @@ export function EmailOperationsPage() {
               <dd>{date(selected.sentAt)}</dd>
             </div>
           </dl>
-        )}
-        {error && (
-          <p role="alert" className="mt-4">
-            {error} Close and refresh details before trying again.
-          </p>
         )}
         <DialogFooter>
           <Button

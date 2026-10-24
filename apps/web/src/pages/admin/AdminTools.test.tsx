@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement, Ref } from 'react';
@@ -8,6 +9,10 @@ import { AuditLogPage } from './AuditLogPage';
 import { apiFetch } from '../../lib/api-client';
 import { clearSession, setUser } from '../../lib/session';
 import type * as ApiClientModule from '../../lib/api-client';
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 
 vi.mock('../../lib/api-client', async () => ({
   ...(await vi.importActual<typeof ApiClientModule>('../../lib/api-client')),
@@ -69,7 +74,11 @@ describe('M5D admin tools', () => {
         }),
       ),
     );
-    await screen.findByText(/Account created/);
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Account created. A set-password invitation is queued.',
+      ),
+    );
     expect(
       await screen.findByRole('dialog', { name: 'Share personnel invitation' }),
     ).toBeInTheDocument();
@@ -81,7 +90,7 @@ describe('M5D admin tools', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
-    await screen.findByText('Invitation link copied.');
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Invitation link copied.'));
     expect(writeText).toHaveBeenCalledWith(invitation.url);
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -103,7 +112,11 @@ describe('M5D admin tools', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Regenerate invitation' }));
     await screen.findByRole('dialog', { name: 'Share personnel invitation' });
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
-    await screen.findByText(/Select the invitation link and copy it manually/);
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Copy is unavailable. Select the invitation link and copy it manually.',
+      ),
+    );
     expect(screen.getByLabelText('Invitation link')).toHaveValue(invitation.url);
     const toDataURL = vi
       .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
@@ -125,7 +138,7 @@ describe('M5D admin tools', () => {
     show(<UsersPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Personnel One' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Account changed');
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Account changed. Review it.'));
     expect(screen.getByLabelText('Name')).toHaveValue(user.name);
   });
 

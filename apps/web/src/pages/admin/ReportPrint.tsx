@@ -15,7 +15,6 @@ export function ReportPrint({
   useEffect(() => {
     const finish = () => onFinish(false);
     window.addEventListener('afterprint', finish);
-    // Print only after React has committed the complete, frozen report to the document.
     const frame = requestAnimationFrame(() => {
       try {
         window.print();

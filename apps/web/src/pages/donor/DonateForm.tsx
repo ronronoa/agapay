@@ -53,7 +53,6 @@ interface DonateFormProps {
   submitLabel: string;
   pendingLabel: string;
   onSubmit: (input: SubmitDonationInput) => Promise<void>;
-  submitError: string | null;
 }
 
 export function DonateForm({
@@ -62,7 +61,6 @@ export function DonateForm({
   submitLabel,
   pendingLabel,
   onSubmit,
-  submitError,
 }: DonateFormProps) {
   const [drafts, setDrafts] = useState<Record<string, DonateItemDraft>>({});
   const [seededFor, setSeededFor] = useState<string | null>(null);
@@ -353,12 +351,6 @@ export function DonateForm({
       {selectedCount === 0 ? (
         <p className="mt-2 text-sm text-text-muted">Select at least one good to donate.</p>
       ) : null}
-
-      {submitError === null ? null : (
-        <p role="alert" className="mt-4 text-sm font-medium">
-          {submitError}
-        </p>
-      )}
 
       <button
         type="submit"

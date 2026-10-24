@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,6 +7,10 @@ import type * as ApiModule from '../../lib/api-client';
 import { apiFetch } from '../../lib/api-client';
 import { clearSession, setSession } from '../../lib/session';
 import { SupportPage } from './SupportPage';
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 
 vi.mock('../../lib/api-client', async () => ({
   ...(await vi.importActual<typeof ApiModule>('../../lib/api-client')),
@@ -132,7 +137,9 @@ describe('SupportPage', () => {
       vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith('/messages')),
     ).toHaveLength(1);
     finish?.({ data: { ...message, body: 'Pending message' } });
-    await screen.findByText('Message sent.');
+    await waitFor(() => expect(screen.getByLabelText('Message')).toHaveValue(''));
+    expect(screen.queryByText('Message sent.')).not.toBeInTheDocument();
+    expect(toast.success).not.toHaveBeenCalled();
     expect(input).toHaveValue('');
     expect(input).toBeEnabled();
   });
@@ -140,6 +147,7 @@ describe('SupportPage', () => {
     const view = show();
     expect(await screen.findByText('<script>plain text only</script>')).toBeInTheDocument();
     expect(view.container.querySelector('script')).toBeNull();
+    expect(screen.getByLabelText('Sent').parentElement?.querySelector('time')).not.toBeNull();
     expect(screen.queryByText('Search donors')).not.toBeInTheDocument();
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith(`/api/v1/support/conversations/${id}/read`, {
@@ -164,10 +172,16 @@ describe('SupportPage', () => {
     await screen.findByLabelText('Message');
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Draft after outage' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-    await screen.findByRole('alert');
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Message could not be sent. Retry with the same draft.',
+      ),
+    );
     expect(screen.getByLabelText('Message')).toHaveValue('Draft after outage');
     fireEvent.click(screen.getByRole('button', { name: 'Retry send' }));
-    await screen.findByText('Message sent.');
+    await waitFor(() => expect(screen.getByLabelText('Message')).toHaveValue(''));
+    expect(screen.queryByText('Message sent.')).not.toBeInTheDocument();
+    expect(toast.success).not.toHaveBeenCalled();
     const writes = vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith('/messages'));
     expect(writes).toHaveLength(2);
     expect(writes[0]?.[1]?.body).toEqual(writes[1]?.[1]?.body);

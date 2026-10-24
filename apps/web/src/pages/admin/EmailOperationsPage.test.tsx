@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -5,6 +6,10 @@ import type { EmailDto } from '@agapay/shared';
 import type * as ApiClientModule from '../../lib/api-client';
 import { apiFetch } from '../../lib/api-client';
 import { EmailOperationsPage } from './EmailOperationsPage';
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 
 vi.mock('../../lib/api-client', async () => ({
   ...(await vi.importActual<typeof ApiClientModule>('../../lib/api-client')),
@@ -122,7 +127,11 @@ describe('EmailOperationsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm retry' }));
     expect(screen.getByRole('button', { name: 'Requeuing…' })).toBeDisabled();
     finish?.({ data: { ...failed, status: 'QUEUED', attempts: 0, lastError: null } });
-    await screen.findByText(/Email requeued/);
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Email requeued. The delivery worker will apply the usual limits and schedule checks.',
+      ),
+    );
     expect(vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith('/retry'))).toHaveLength(
       1,
     );
@@ -142,7 +151,7 @@ describe('EmailOperationsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /View delivery/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Retry email' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm retry' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Close and refresh details');
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Email is no longer failed.'));
     expect(screen.getByRole('button', { name: 'Confirm retry' })).toBeDisabled();
   });
   it('does not offer retry for queued, sending, sent or suppressed emails', async () => {

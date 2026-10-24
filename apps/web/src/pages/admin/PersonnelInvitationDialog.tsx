@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { useRef } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import type { PersonnelInvitation } from '@agapay/shared';
 import { Button } from '../../components/ui/Button';
@@ -15,13 +16,12 @@ export function PersonnelInvitationDialog({
   onClose: () => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [message, setMessage] = useState('');
   async function copy() {
     try {
       await navigator.clipboard.writeText(invitation.url);
-      setMessage('Invitation link copied.');
+      toast.success('Invitation link copied.');
     } catch {
-      setMessage('Copy is unavailable. Select the invitation link and copy it manually.');
+      toast.error('Copy is unavailable. Select the invitation link and copy it manually.');
     }
   }
   function download() {
@@ -31,9 +31,9 @@ export function PersonnelInvitationDialog({
       link.download = 'agapay-personnel-invitation.png';
       link.href = canvas.current.toDataURL('image/png');
       link.click();
-      setMessage('QR image downloaded.');
+      toast.success('QR image downloaded.');
     } catch {
-      setMessage('Could not download the QR image. You can still copy the invitation link.');
+      toast.error('Could not download the QR image. You can still copy the invitation link.');
     }
   }
   const localOnly = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(invitation.url).hostname);
@@ -84,7 +84,6 @@ export function PersonnelInvitationDialog({
           The link is shown for this session only. After closing, regenerate an invitation if
           needed; earlier links will stop working.
         </p>
-        {message && <p role="status">{message}</p>}
       </div>
       <DialogFooter className="flex-wrap">
         <Button variant="accent" onClick={() => void copy()}>

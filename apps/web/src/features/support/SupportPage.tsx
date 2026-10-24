@@ -1,7 +1,8 @@
+import { toast } from 'sonner';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, RefreshCcw, Search, Send } from 'lucide-react';
+import { ArrowLeft, Check, RefreshCcw, Search, Send } from 'lucide-react';
 import {
   supportConversationResponseSchema,
   supportListResponseSchema,
@@ -21,7 +22,6 @@ import { Dialog, DialogTitle, DialogDescription, DialogFooter } from '../../comp
 import { useLiveStatus } from './RealtimeProvider';
 import { Textarea } from '../../components/ui/textarea';
 import { Spinner } from '../../components/ui/spinner';
-import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Skeleton } from '../../components/ui/skeleton';
 import { cn } from '../../lib/utils';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
@@ -74,7 +74,6 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [closing, setClosing] = useState<{ status: 'OPEN' | 'CLOSED'; revision: number } | null>(
     null,
   );
@@ -159,7 +158,9 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
       })
       .catch(() => {
         readThrough.current.delete(selected);
-        setError('Could not update read status. Refresh the conversation to retry.');
+        toast.error('Could not update read status. Refresh the conversation to retry.', {
+          id: 'support-read-status',
+        });
       });
   }, [selected, latest, visible, client, readRetry, atBottom, closing]);
   const draft = drafts[selected];
@@ -167,12 +168,11 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
     if (!selected || busy) return;
     const parsed = sendSupportMessageSchema.safeParse(draft);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Enter a message.');
+      toast.error(parsed.error.issues[0]?.message ?? 'Enter a message.');
       return;
     }
     setBusy(true);
     setError('');
-    setNotice('');
     try {
       supportSendResponseSchema.parse(
         await apiFetch(`/api/v1/support/conversations/${selected}/messages`, {
@@ -185,10 +185,10 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
         if (next[selected]?.clientMessageId === parsed.data.clientMessageId) delete next[selected];
         return next;
       });
-      setNotice('Message sent.');
       await client.invalidateQueries({ queryKey: ['support'] });
       await client.invalidateQueries({ queryKey: ['in-app'] });
     } catch (err) {
+      toast.error('Message could not be sent. Retry with the same draft.');
       setError(
         err instanceof Error
           ? err.message
@@ -210,10 +210,10 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
         }),
       );
       setClosing(null);
-      setNotice('Conversation status updated.');
+      toast.success('Conversation status updated.');
       await client.invalidateQueries({ queryKey: ['support'] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update conversation.');
+      toast.error(err instanceof Error ? err.message : 'Could not update conversation.');
       setClosing(null);
       detail.refetch();
     } finally {
@@ -263,16 +263,6 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
           <TooltipContent>Refresh messages</TooltipContent>
         </Tooltip>
       </div>
-      {notice && (
-        <Alert role="status" variant="success" className="shrink-0">
-          <AlertDescription>{notice}</AlertDescription>
-        </Alert>
-      )}
-      {error && (
-        <Alert variant="destructive" className="shrink-0">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
       {!personnel && mine.isPending && <p role="status">Opening your conversation…</p>}
       {!personnel && mine.isError && (
         <div role="alert">
@@ -303,8 +293,12 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
               className="flex flex-wrap gap-2"
             >
               <label className="w-full text-sm">
-                Search donors
-                <Input value={q} maxLength={100} onChange={(event) => setQ(event.target.value)} />
+                <Input
+                  value={q}
+                  maxLength={100}
+                  onChange={(event) => setQ(event.target.value)}
+                  placeholder="Search donors"
+                />
               </label>
               <Button
                 type="submit"
@@ -374,7 +368,6 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                           onClick={() => {
                             setParams({ conversation: conversation.id });
                             setError('');
-                            setNotice('');
                           }}
                         >
                           <Avatar className="size-11">
@@ -556,7 +549,12 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                                   >
                                     <BubbleContent>{message.body}</BubbleContent>
                                   </Bubble>
-                                  <MessageFooter>
+                                  <MessageFooter
+                                    className={cn(
+                                      'flex items-center gap-1',
+                                      message.senderId === getUser()?.id && 'justify-end',
+                                    )}
+                                  >
                                     <time dateTime={message.createdAt}>
                                       {new Date(message.createdAt).toLocaleTimeString('en-PH', {
                                         timeZone: 'Asia/Manila',
@@ -564,6 +562,15 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                                         minute: '2-digit',
                                       })}
                                     </time>
+                                    {message.senderId === getUser()?.id && (
+                                      <span
+                                        className="inline-flex items-center"
+                                        role="img"
+                                        aria-label="Sent"
+                                      >
+                                        <Check className="size-3" aria-hidden="true" />
+                                      </span>
+                                    )}
                                   </MessageFooter>
                                 </MessageContent>
                               </Message>
@@ -587,28 +594,24 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                   <label className="block text-sm font-medium" htmlFor="support-message">
                     Message
                   </label>
-                  <Textarea
-                    id="support-message"
-                    value={draft?.body ?? ''}
-                    maxLength={4000}
-                    rows={2}
-                    className="max-h-32 resize-none"
-                    disabled={busy || (personnel && detail.data.data.status === 'CLOSED')}
-                    onChange={(event) => {
-                      setError('');
-                      setDrafts((previous) => ({
-                        ...previous,
-                        [selected]: {
-                          body: event.target.value,
-                          clientMessageId: crypto.randomUUID(),
-                        },
-                      }));
-                    }}
-                  />
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs text-text-muted">
-                      {draft?.body.length ?? 0}/4000 · Drafts stay here while Messages is open.
-                    </p>
+                  <div className="flex items-center gap-2">
+                    <Textarea
+                      id="support-message"
+                      value={draft?.body ?? ''}
+                      maxLength={4000}
+                      disabled={busy || (personnel && detail.data.data.status === 'CLOSED')}
+                      onChange={(event) => {
+                        setError('');
+                        setDrafts((previous) => ({
+                          ...previous,
+                          [selected]: {
+                            body: event.target.value,
+                            clientMessageId: crypto.randomUUID(),
+                          },
+                        }));
+                      }}
+                    />
+
                     <Button
                       type="submit"
                       className="min-h-11"
@@ -626,6 +629,11 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                       )}
                       {busy ? 'Saving…' : error ? 'Retry send' : 'Send message'}
                     </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-xs text-text-muted">
+                      {draft?.body.length ?? 0}/4000 · Drafts stay here while Messages is open.
+                    </p>
                   </div>
                   {!personnel && detail.data.data.status === 'CLOSED' && (
                     <p className="text-sm text-text-muted">
@@ -648,7 +656,6 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
         <DialogDescription>
           History stays available. A new donor message reopens a closed conversation.
         </DialogDescription>
-        {error && <p role="alert">{error}</p>}
         <DialogFooter>
           <Button variant="accent" disabled={busy} onClick={() => setClosing(null)}>
             Cancel

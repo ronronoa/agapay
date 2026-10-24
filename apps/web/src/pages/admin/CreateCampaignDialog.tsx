@@ -250,16 +250,14 @@ export function CreateCampaignDialog({
       close();
     } catch (err) {
       if (saved !== null) {
-        setFormError(
+        onCreated(`Campaign "${saved.name}" created.`);
+        toast.warning(
           'The campaign was created, but the image could not be uploaded. Retry the image upload or select Done.',
         );
-        onCreated(`Campaign "${saved.name}" created.`);
-        toast.warning('Campaign created; image upload failed.');
       } else {
-        setFormError(
+        toast.error(
           err instanceof ApiClientError ? err.message : 'Create failed. Please try again.',
         );
-        toast.error('Could not create the campaign. Please review the form and retry.');
       }
     } finally {
       inFlight.current = false;

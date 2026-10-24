@@ -4,6 +4,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CalendarDays,
+  RefreshCcw,
   ScrollText,
   ShieldCheck,
   UserCheck,
@@ -47,7 +48,7 @@ function AttentionCard({
   count,
   actionLabel,
   to,
-  highlighted,
+  // highlighted,
 }: {
   icon: LucideIcon;
   title: string;
@@ -57,33 +58,29 @@ function AttentionCard({
   highlighted?: boolean;
 }): ReactNode {
   return (
-    <div
-      className={`rounded-xl border bg-surface p-5 shadow-card ${
-        highlighted === true ? 'border-primary' : 'border-border'
-      }`}
-    >
+    <div className={`rounded-xl border bg-surface p-5 shadow-card border-gray-300`}>
       <div className="flex items-center gap-3">
         <span
           aria-hidden="true"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-surface-alt text-pine"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-surface-alt text-pine"
         >
           <Icon className="h-5 w-5" />
         </span>
         <p className="text-sm font-medium text-text-muted">{title}</p>
       </div>
-      <p className="mt-3 text-3xl font-bold">{count === null ? '…' : count}</p>
+      <p className="mt-3 text-4xl font-bold">{count === null ? '…' : count}</p>
       {to === undefined ? (
         <span
           aria-disabled="true"
           title="This queue arrives with the admin slice"
-          className="mt-3 inline-flex min-h-[40px] cursor-not-allowed items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium opacity-60"
+          className="mt-3 inline-flex min-h-10 cursor-not-allowed items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium opacity-60"
         >
           {actionLabel} (soon)
         </span>
       ) : (
         <Link
           to={to}
-          className="mt-3 inline-flex min-h-[40px] items-center justify-center rounded-full bg-primary-subtle px-5 py-2 text-sm font-medium text-surface hover:bg-pine-dark"
+          className="mt-3 inline-flex min-h-10 items-center justify-center rounded-full bg-primary-subtle px-5 py-2 text-sm font-medium text-surface hover:bg-pine-dark"
         >
           {actionLabel}
         </Link>
@@ -128,9 +125,9 @@ export function AdminDashboardPage() {
       <button
         type="button"
         onClick={query.refetch}
-        className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium"
+        className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium flex gap-1 items-center cursor-pointer hover:bg-surface-alt"
       >
-        Refresh dashboard
+        <RefreshCcw size={16} /> Refresh dashboard
       </button>
       <AsyncBoundary
         data={query.data?.data ?? null}
@@ -178,8 +175,8 @@ function DashboardContents({ dashboard }: { dashboard: AdminDashboardResponse['d
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-display text-lg font-semibold">Needs your attention</h2>
-          <p className="text-sm text-text-muted">{rangeLabel}</p>
+          <h2 className="font-display text-sm font-semibold">Needs your attention</h2>
+          <p className="text-xs text-text-muted">{rangeLabel}</p>
           <p className="text-xs text-text-muted">
             Current queues; summaries below use Manila dates. Updated{' '}
             {new Date(dashboard.asOf).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}.
@@ -187,7 +184,7 @@ function DashboardContents({ dashboard }: { dashboard: AdminDashboardResponse['d
         </div>
         <Link
           to="/admin/reports"
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-border px-4 text-sm font-medium hover:bg-surface-alt"
+          className="inline-flex min-h-10 items-center gap-2 rounded-sm border border-border px-4 text-sm font-medium hover:bg-surface-alt"
         >
           <ScrollText className="h-4 w-4" aria-hidden="true" />
           View reports
@@ -201,7 +198,6 @@ function DashboardContents({ dashboard }: { dashboard: AdminDashboardResponse['d
           count={pendingDonations}
           actionLabel="Review"
           to="/admin/donations"
-          highlighted
         />
         <AttentionCard
           icon={UserCheck}
@@ -209,7 +205,6 @@ function DashboardContents({ dashboard }: { dashboard: AdminDashboardResponse['d
           count={pendingRequests}
           actionLabel="Review"
           to="/admin/requests"
-          highlighted
         />
         <AttentionCard
           icon={CalendarDays}

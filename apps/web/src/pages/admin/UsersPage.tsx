@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -34,7 +35,6 @@ export function UsersPage() {
   const [editing, setEditing] = useState<AdminUser | 'new' | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [invitation, setInvitation] = useState<{
     details: PersonnelInvitation;
     recipient: string;
@@ -81,13 +81,13 @@ export function UsersPage() {
         const created = createUserResponseSchema.parse(response);
         setInvitation({ details: created.invitation, recipient: created.data.email });
       }
-      setNotice(
+      toast.success(
         current ? 'Account updated.' : 'Account created. A set-password invitation is queued.',
       );
       setEditing(null);
       await client.invalidateQueries({ queryKey: ['users'] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save account.');
+      toast.error(err instanceof Error ? err.message : 'Could not save account.');
     } finally {
       setBusy(false);
     }
@@ -96,15 +96,14 @@ export function UsersPage() {
   async function resend(user: AdminUser) {
     setBusy(true);
     setError('');
-    setNotice('');
     try {
       const response = personnelInvitationResponseSchema.parse(
         await apiFetch(`/api/v1/users/${user.id}/invitation`, { method: 'POST' }),
       );
       setInvitation({ details: response.data, recipient: user.email });
-      setNotice('A new invitation is queued. Earlier invitation links no longer work.');
+      toast.success('A new invitation is queued. Earlier invitation links no longer work.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not resend invitation.');
+      toast.error(err instanceof Error ? err.message : 'Could not resend invitation.');
     } finally {
       setBusy(false);
     }
@@ -168,7 +167,6 @@ export function UsersPage() {
           </Button>
         }
       />
-      {notice && <p role="status">{notice}</p>}
       {error && editing === null && <p role="alert">{error}</p>}
       <div className="flex flex-wrap gap-3">
         <label>

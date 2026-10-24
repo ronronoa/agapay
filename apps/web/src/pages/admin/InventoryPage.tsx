@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import {
   campaignListResponseSchema,
   inventoryListResponseSchema,
@@ -24,6 +24,9 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Alert, AlertDescription } from '../../components/ui/alert';
+import { Spinner } from '../../components/ui/spinner';
+import { toast } from 'sonner';
 
 const PAGE_SIZE = 20;
 const MOVEMENT_PAGE_SIZE = 10;
@@ -58,7 +61,11 @@ const MOVEMENT_LABEL: Record<string, string> = {
 };
 
 function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(iso).toLocaleString('en-PH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Manila',
+  });
 }
 
 function buildQuery(
@@ -110,8 +117,17 @@ export function InventoryPage() {
   const [photoRowId, setPhotoRowId] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  function beginSave() {
+    inFlight.current = true;
+    setBusy(true);
+    setFormError(null);
+  }
+  function finishSave() {
+    inFlight.current = false;
+    setBusy(false);
+  }
 
   const query = useApiQuery(
     ['admin-inventory', campaignId, itemTypeId, lowStock, page],
@@ -152,12 +168,10 @@ export function InventoryPage() {
   function openMovements(row: InventoryDto): void {
     setMovementsId(row.id);
     setMovementPage(1);
-    setActionError(null);
   }
 
   function openSupply(direction: 'IN' | 'OUT', row: InventoryDto | null): void {
     setFormError(null);
-    setActionError(null);
     setSupplyFile(null);
     setSupply({
       direction,
@@ -171,12 +185,12 @@ export function InventoryPage() {
 
   function openPhoto(row: InventoryDto): void {
     setFormError(null);
-    setActionError(null);
     setPhotoFile(null);
     setPhotoRowId(row.id);
   }
 
   function submitPhoto(): void {
+    if (inFlight.current) return;
     if (photoRowId === null || photoFile === null) {
       setFormError('Choose a photo first.');
       return;
@@ -188,24 +202,24 @@ export function InventoryPage() {
     }
     const id = photoRowId;
     const file = photoFile;
-    setActionError(null);
+    beginSave();
     void uploadPhoto(id, file)
       .then(() => {
-        setMessage('Photo saved.');
+        toast.success('Photo saved.');
         setPhotoRowId(null);
         setPhotoFile(null);
         query.refetch();
         if (id === movementsId) movementsQuery.refetch();
       })
       .catch((err: unknown) => {
-        setActionError(actionFailureMessage(err));
-      });
+        toast.error(actionFailureMessage(err));
+      })
+      .finally(finishSave);
   }
 
   function openTransfer(row: InventoryDto | null): void {
     if (!isAdmin) return;
     setFormError(null);
-    setActionError(null);
     setTransfer({
       itemTypeId: row?.itemTypeId ?? '',
       fromCampaignId: row?.campaignId ?? '',
@@ -216,6 +230,7 @@ export function InventoryPage() {
   }
 
   function submitSupply(): void {
+    if (inFlight.current) return;
     if (supply === null) return;
     const quantity = Number(supply.quantity);
     if (supply.itemTypeId === '' || supply.campaignId === '') {
@@ -241,7 +256,7 @@ export function InventoryPage() {
     const targetRowId = supply.rowId;
     const direction = supply.direction;
     const savedMessage = direction === 'IN' ? 'Stock added.' : 'Stock corrected.';
-    setActionError(null);
+    beginSave();
     void apiFetch<unknown>('/api/v1/inventory/adjustments', {
       method: 'POST',
       body: {
@@ -256,7 +271,7 @@ export function InventoryPage() {
         // The photo goes up only after the stock row exists, so a failed
         // adjustment can never orphan a file.
         if (file === null) {
-          setMessage(savedMessage);
+          toast.success(savedMessage);
           setSupply(null);
           query.refetch();
           if (targetRowId !== null && targetRowId === movementsId) movementsQuery.refetch();
@@ -264,19 +279,16 @@ export function InventoryPage() {
         }
         const parsed = inventoryResponseSchema.safeParse(res);
         if (!parsed.success) {
-          setMessage(savedMessage);
+          toast.warning('Stock saved. Use the Photo action to attach its image.');
           setSupply(null);
           setSupplyFile(null);
-          setActionError(
-            'The stock was saved, but the photo could not be attached. Use the row’s Photo action to retry.',
-          );
           query.refetch();
           return;
         }
         const createdId = parsed.data.data.id;
-        void uploadPhoto(createdId, file)
+        return uploadPhoto(createdId, file)
           .then(() => {
-            setMessage(
+            toast.success(
               direction === 'IN' ? 'Stock added with photo.' : 'Stock corrected with photo.',
             );
             setSupply(null);
@@ -285,25 +297,26 @@ export function InventoryPage() {
             if (createdId === movementsId) movementsQuery.refetch();
           })
           .catch((err: unknown) => {
+            toast.warning(
+              `The stock was saved, but the photo failed: ${actionFailureMessage(err)} You can retry it here.`,
+            );
             // The stock landed; hand the same file to the Photo dialog for retry
             // instead of re-submitting the adjustment and double-counting stock.
-            setMessage(savedMessage);
             setSupply(null);
             setSupplyFile(null);
             setPhotoFile(file);
             setPhotoRowId(createdId);
-            setActionError(
-              `The stock was saved, but the photo failed: ${actionFailureMessage(err)} You can retry it here.`,
-            );
             query.refetch();
           });
       })
       .catch((err: unknown) => {
-        setActionError(actionFailureMessage(err));
-      });
+        toast.error(actionFailureMessage(err));
+      })
+      .finally(finishSave);
   }
 
   function submitTransfer(): void {
+    if (inFlight.current) return;
     if (transfer === null) return;
     const quantity = Number(transfer.quantity);
     if (transfer.itemTypeId === '') {
@@ -333,7 +346,7 @@ export function InventoryPage() {
           (row.campaignId === transfer.fromCampaignId || row.campaignId === transfer.toCampaignId),
       )
       .map((row) => row.id);
-    setActionError(null);
+    beginSave();
     void apiFetch('/api/v1/inventory/transfer', {
       method: 'POST',
       body: {
@@ -345,14 +358,15 @@ export function InventoryPage() {
       },
     })
       .then(() => {
-        setMessage('Stock transferred.');
+        toast.success('Stock transferred.');
         setTransfer(null);
         query.refetch();
         if (movementsId !== null && affectedIds.includes(movementsId)) movementsQuery.refetch();
       })
       .catch((err: unknown) => {
-        setActionError(actionFailureMessage(err));
-      });
+        toast.error(actionFailureMessage(err));
+      })
+      .finally(finishSave);
   }
 
   const columns: Column<InventoryDto>[] = [
@@ -443,12 +457,6 @@ export function InventoryPage() {
         }
       />
 
-      {message === null ? null : (
-        <p role="status" className="text-sm font-medium">
-          {message}
-        </p>
-      )}
-
       <form
         aria-label="Inventory filters"
         className="grid gap-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4"
@@ -508,9 +516,10 @@ export function InventoryPage() {
       </form>
 
       <AsyncBoundary
-        data={items}
+        data={query.data === null ? null : items}
         error={query.error}
         isPending={query.isPending}
+        isRefreshing={query.isFetching && !query.isPending}
         onRetry={query.refetch}
         loadingLabel="Loading inventory…"
         isEmpty={(rows) => rows.length === 0}
@@ -561,7 +570,6 @@ export function InventoryPage() {
         onOpenChange={(open) => {
           if (!open) {
             setMovementsId(null);
-            setActionError(null);
           }
         }}
       >
@@ -573,18 +581,16 @@ export function InventoryPage() {
         <DialogDescription>
           Every stock change keeps a movement row with its balances afterward.
         </DialogDescription>
-        {actionError === null ? null : (
-          <p role="alert" className="mt-3 text-sm font-medium">
-            {actionError}
-          </p>
-        )}
+
         {movementsQuery.isPending ? (
           <p role="status" className="mt-3 text-sm text-text-muted">
             Loading movements…
           </p>
         ) : movementsQuery.error !== null ? (
           <div className="mt-3 text-sm">
-            <p role="alert">{movementsQuery.error}</p>
+            <Alert variant="destructive">
+              <AlertDescription>{movementsQuery.error}</AlertDescription>
+            </Alert>
             <Button
               type="button"
               variant="accent"
@@ -644,10 +650,9 @@ export function InventoryPage() {
       <Dialog
         open={supply !== null}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !inFlight.current) {
             setSupply(null);
             setFormError(null);
-            setActionError(null);
           }
         }}
       >
@@ -657,18 +662,20 @@ export function InventoryPage() {
             ? 'Reduce available stock for a correction. There must be enough available stock.'
             : 'Increase available stock. An adjustment row can create the stock row for a new goods-and-campaign pair.'}
         </DialogDescription>
-        {actionError === null ? null : (
-          <p role="alert" className="mt-3 text-sm font-medium">
-            {actionError}
-          </p>
-        )}
+
         {formError === null ? null : (
-          <p role="alert" className="mt-3 text-sm font-medium">
+          <p role="alert" className="mt-3 text-sm font-medium text-error-text">
             {formError}
           </p>
         )}
         {supply === null ? null : (
-          <div className="mt-4 space-y-3">
+          <fieldset disabled={busy} aria-busy={busy} className="mt-4 flex flex-col gap-3">
+            {busy && (
+              <p role="status" className="flex items-center gap-2">
+                <Spinner aria-hidden="true" />
+                Saving stock…
+              </p>
+            )}
             <div>
               <Label htmlFor="supply-item">Goods</Label>
               <select
@@ -744,18 +751,17 @@ export function InventoryPage() {
                 {supply.direction === 'OUT' ? 'Confirm correction' : 'Confirm supply'}
               </Button>
             </DialogFooter>
-          </div>
+          </fieldset>
         )}
       </Dialog>
 
       <Dialog
         open={photoRowId !== null}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !inFlight.current) {
             setPhotoRowId(null);
             setPhotoFile(null);
             setFormError(null);
-            setActionError(null);
           }
         }}
       >
@@ -763,17 +769,19 @@ export function InventoryPage() {
         <DialogDescription>
           PNG, JPG, or WEBP up to {MAX_PHOTO_MB}MB. Replacing a photo removes the old file.
         </DialogDescription>
-        {actionError === null ? null : (
-          <p role="alert" className="mt-3 text-sm font-medium">
-            {actionError}
-          </p>
-        )}
+
         {formError === null ? null : (
-          <p role="alert" className="mt-3 text-sm font-medium">
+          <p role="alert" className="mt-3 text-sm font-medium text-error-text">
             {formError}
           </p>
         )}
-        <div className="mt-4 space-y-3">
+        <fieldset disabled={busy} aria-busy={busy} className="mt-4 flex flex-col gap-3">
+          {busy && (
+            <p role="status" className="flex items-center gap-2">
+              <Spinner aria-hidden="true" />
+              Uploading photo…
+            </p>
+          )}
           <div>
             <Label htmlFor="row-photo">Photo</Label>
             <Input
@@ -796,16 +804,15 @@ export function InventoryPage() {
               Upload photo
             </Button>
           </DialogFooter>
-        </div>
+        </fieldset>
       </Dialog>
 
       <Dialog
         open={transfer !== null}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !inFlight.current) {
             setTransfer(null);
             setFormError(null);
-            setActionError(null);
           }
         }}
       >
@@ -813,18 +820,20 @@ export function InventoryPage() {
         <DialogDescription>
           Transfers are ADMIN-only and write paired out/in movement rows.
         </DialogDescription>
-        {actionError === null ? null : (
-          <p role="alert" className="mt-3 text-sm font-medium">
-            {actionError}
-          </p>
-        )}
+
         {formError === null ? null : (
-          <p role="alert" className="mt-3 text-sm font-medium">
+          <p role="alert" className="mt-3 text-sm font-medium text-error-text">
             {formError}
           </p>
         )}
         {transfer === null ? null : (
-          <div className="mt-4 space-y-3">
+          <fieldset disabled={busy} aria-busy={busy} className="mt-4 flex flex-col gap-3">
+            {busy && (
+              <p role="status" className="flex items-center gap-2">
+                <Spinner aria-hidden="true" />
+                Transferring stock…
+              </p>
+            )}
             <div>
               <Label htmlFor="transfer-item">Goods</Label>
               <select
@@ -910,7 +919,7 @@ export function InventoryPage() {
                 Confirm transfer
               </Button>
             </DialogFooter>
-          </div>
+          </fieldset>
         )}
       </Dialog>
     </div>

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import {
   itemTypeListResponseSchema,
   itemTypeResponseSchema,
@@ -25,7 +26,6 @@ function describeLimit(value: number | null, unit: string): string {
 export function ItemTypesPage() {
   const [editing, setEditing] = useState<ItemTypeDto | 'new' | null>(null);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -71,10 +71,10 @@ export function ItemTypesPage() {
         }),
       );
       setEditing(null);
-      setNotice('Item type saved.');
+      toast.success('Item type saved.');
       query.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save item type.');
+      toast.error(err instanceof Error ? err.message : 'Could not save item type.');
     } finally {
       setBusy(false);
     }
@@ -150,7 +150,6 @@ export function ItemTypesPage() {
           ) : undefined
         }
       />
-      {notice && <p role="status">{notice}</p>}
       <label className="block max-w-md">
         Search item types
         <Input

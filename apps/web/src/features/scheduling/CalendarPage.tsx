@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -16,7 +16,13 @@ import { useApiQuery } from '../../lib/use-api-query';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/input';
-import { Dialog, DialogTitle, DialogDescription, DialogFooter } from '../../components/ui/dialog';
+import {
+  Dialog,
+  DialogClose,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../../components/ui/dialog';
 import {
   Field,
   QueryNotice,
@@ -30,7 +36,9 @@ import {
   formText,
   actionError,
 } from './shared';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Alert, AlertDescription } from '../../components/ui/alert';
+import { toast } from 'sonner';
 
 function monthStart(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
@@ -44,7 +52,6 @@ export function CalendarPage() {
   const [type, setType] = useState('');
   const [status, setStatus] = useState('');
   const [createDate, setCreateDate] = useState<string | null>(null);
-  const [notice, setNotice] = useState('');
   const [params, setParams] = useSearchParams();
   const next = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1));
   const from = new Date(+month - 8 * 3600_000).toISOString();
@@ -61,7 +68,7 @@ export function CalendarPage() {
   const client = useQueryClient();
   const refresh = () => {
     void client.invalidateQueries({ queryKey: ['scheduling'] });
-    setNotice('Event updated.');
+    toast.success('Event updated.');
   };
   const firstWeekday = month.getUTCDay();
   const days = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth(), 0)).getUTCDate();
@@ -81,7 +88,6 @@ export function CalendarPage() {
           </Button>
         }
       />
-      {notice && <p role="status">{notice}</p>}
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Campaign">
           <select
@@ -188,27 +194,34 @@ export function CalendarPage() {
                   +new Date(e.startAt) < dayStart + 86_400_000 && +new Date(e.endAt) > dayStart,
               );
               return (
-                <div key={i} className="min-h-32 min-w-0 border-b border-r border-border p-2">
+                <div
+                  key={i}
+                  className="relative min-h-32 min-w-0 border-b border-r border-border p-2"
+                >
                   <button
+                    type="button"
                     aria-label={`Create event on ${date}`}
-                    className="mb-2 rounded px-2 py-1 text-sm hover:bg-surface-alt"
+                    className="absolute inset-0 size-full cursor-pointer text-left text-sm hover:bg-surface-alt focus-visible:-outline-offset-2"
                     onClick={() => setCreateDate(date)}
                   >
-                    {day}
+                    <span className="absolute left-2 top-2 rounded px-2 py-1">{day}</span>
                   </button>
-                  {dayEvents.map((e) => (
-                    <button
-                      key={e.id}
-                      onClick={() => choose(e.id)}
-                      className="mb-1 block w-full rounded border-l-2 border-primary bg-surface-alt p-2 text-left text-xs"
-                    >
-                      <span className="block font-semibold break-words">{e.title}</span>
-                      <span>
-                        {localDate(e.startAt).slice(11)} · {words(e.type)}
-                      </span>
-                      <span className="block">{words(e.status)}</span>
-                    </button>
-                  ))}
+                  <div className="pointer-events-none relative mt-10 flex flex-col gap-1">
+                    {dayEvents.map((e) => (
+                      <button
+                        key={e.id}
+                        onClick={() => choose(e.id)}
+                        type="button"
+                        className="pointer-events-auto relative block w-full rounded border border-primary bg-surface-alt p-2 text-left text-xs hover:bg-info-bg"
+                      >
+                        <span className="block font-semibold break-words">{e.title}</span>
+                        <span>
+                          {localDate(e.startAt).slice(11)} · {words(e.type)}
+                        </span>
+                        <span className="block">{words(e.status)}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               );
             })}
@@ -265,10 +278,14 @@ function EventForm({
 }) {
   const campaigns = useAll('/api/v1/campaigns', campaignSchema);
   const [type, setType] = useState(event?.type ?? 'DISTRIBUTION');
+  const client = useQueryClient();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [confirmed, setConfirmed] = useState(false);
   async function submit(form: HTMLFormElement) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError('');
     try {
@@ -296,7 +313,9 @@ function EventForm({
       close();
     } catch (e) {
       setError(actionError(e));
+      toast.error(actionError(e));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -308,7 +327,19 @@ function EventForm({
       }}
       size="xl"
     >
-      <DialogTitle>{event ? 'Edit event' : 'Create event'}</DialogTitle>
+      <DialogClose asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-3 top-3"
+          aria-label="Close event form"
+          disabled={busy}
+        >
+          <X aria-hidden="true" />
+        </Button>
+      </DialogClose>
+      <DialogTitle className="pr-12">{event ? 'Edit event' : 'Create event'}</DialogTitle>
       <DialogDescription>Schedule in Philippine time. Events may overlap.</DialogDescription>
       <form
         className="mt-5 grid gap-4"
@@ -317,121 +348,132 @@ function EventForm({
           void submit(e.currentTarget);
         }}
       >
-        <Field label="Title">
-          <Input name="title" required minLength={3} maxLength={200} defaultValue={event?.title} />
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Event type">
-            <select
-              name="type"
-              className={selectClass}
-              value={type}
-              disabled={!!event}
-              onChange={(e) => {
-                const t = eventTypes.find((t) => t === e.target.value);
-                if (t) setType(t);
-              }}
-            >
-              {eventTypes.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Campaign">
-            <select
-              name="campaignId"
-              className={selectClass}
-              required
-              disabled={!!event}
-              defaultValue={event?.campaignId ?? ''}
-            >
-              <option value="">Choose campaign</option>
-              {campaigns.data?.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Starts">
+        <fieldset disabled={busy} className="grid min-w-0 gap-4">
+          <Field label="Title">
             <Input
-              type="datetime-local"
-              name="startAt"
+              name="title"
               required
-              defaultValue={event ? localDate(event.startAt) : `${date}T09:00`}
+              minLength={3}
+              maxLength={200}
+              defaultValue={event?.title}
             />
           </Field>
-          <Field label="Ends">
-            <Input
-              type="datetime-local"
-              name="endAt"
-              required
-              defaultValue={event ? localDate(event.endAt) : `${date}T12:00`}
-            />
-          </Field>
-        </div>
-        <Field label="Location">
-          <Input name="location" required maxLength={300} defaultValue={event?.location} />
-        </Field>
-        {type === 'DISTRIBUTION' && (
-          <Field label="Capacity (beneficiary requests; leave blank for unlimited)">
-            <Input
-              name="capacity"
-              type="number"
-              min={1}
-              max={100000}
-              defaultValue={event?.capacity ?? ''}
-            />
-          </Field>
-        )}
-        <Field label="Description (optional)">
-          <textarea
-            className={selectClass}
-            name="description"
-            maxLength={2000}
-            defaultValue={event?.description ?? ''}
-          />
-        </Field>
-        {event && (
-          <label className="flex gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(e) => setConfirmed(e.target.checked)}
-            />
-            I reviewed the {event.outstandingCollections} collections and{' '}
-            {event.outstandingDistributions} distributions affected. Time or location changes will
-            email their recipients.
-          </label>
-        )}
-        {error && (
-          <div role="alert">
-            <p>{error}</p>
-            {event && (
-              <button
-                type="button"
-                className="mt-2 underline"
-                onClick={() => {
-                  saved();
-                  close();
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Event type">
+              <select
+                name="type"
+                className={selectClass}
+                value={type}
+                disabled={!!event}
+                onChange={(e) => {
+                  const t = eventTypes.find((t) => t === e.target.value);
+                  if (t) setType(t);
                 }}
               >
-                Reload latest event
-              </button>
-            )}
+                {eventTypes.map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Campaign">
+              <select
+                name="campaignId"
+                className={selectClass}
+                required
+                disabled={!!event}
+                defaultValue={event?.campaignId ?? ''}
+              >
+                <option value="">Choose campaign</option>
+                {campaigns.data?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
-        )}
-        {campaigns.error && <p role="alert">{campaigns.error.message}</p>}
-        <DialogFooter>
-          <Button variant="accent" disabled={busy} onClick={close}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy || campaigns.isPending || (!!event && !confirmed)}>
-            {busy ? 'Saving…' : 'Save event'}
-          </Button>
-        </DialogFooter>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Starts">
+              <Input
+                type="datetime-local"
+                name="startAt"
+                required
+                defaultValue={event ? localDate(event.startAt) : `${date}T09:00`}
+              />
+            </Field>
+            <Field label="Ends">
+              <Input
+                type="datetime-local"
+                name="endAt"
+                required
+                defaultValue={event ? localDate(event.endAt) : `${date}T12:00`}
+              />
+            </Field>
+          </div>
+          <Field label="Location">
+            <Input name="location" required maxLength={300} defaultValue={event?.location} />
+          </Field>
+          {type === 'DISTRIBUTION' && (
+            <Field label="Capacity (beneficiary requests; leave blank for unlimited)">
+              <Input
+                name="capacity"
+                type="number"
+                min={1}
+                max={100000}
+                defaultValue={event?.capacity ?? ''}
+              />
+            </Field>
+          )}
+          <Field label="Description (optional)">
+            <textarea
+              className={selectClass}
+              name="description"
+              maxLength={2000}
+              defaultValue={event?.description ?? ''}
+            />
+          </Field>
+          {event && (
+            <label className="flex gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+              />
+              I reviewed the {event.outstandingCollections} collections and{' '}
+              {event.outstandingDistributions} distributions affected. Time or location changes will
+              email their recipients.
+            </label>
+          )}
+          {error && (
+            <div>
+              {event && (
+                <button
+                  type="button"
+                  className="mt-2 underline"
+                  onClick={() => {
+                    void client.invalidateQueries({ queryKey: ['scheduling'] });
+                    close();
+                  }}
+                >
+                  Reload latest event
+                </button>
+              )}
+            </div>
+          )}
+          {campaigns.error && (
+            <Alert variant="destructive">
+              <AlertDescription>{campaigns.error.message}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button variant="accent" disabled={busy} onClick={close}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={busy || campaigns.isPending || (!!event && !confirmed)}>
+              {busy ? 'Saving…' : 'Save event'}
+            </Button>
+          </DialogFooter>
+        </fieldset>
       </form>
     </Dialog>
   );
@@ -449,8 +491,11 @@ function EventDetails({ id, close, saved }: { id: string; close: () => void; sav
   const [action, setAction] = useState<'cancel' | 'complete' | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const e = event.data?.data;
   async function mutate(path: string, body: unknown) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError('');
     try {
@@ -462,7 +507,9 @@ function EventDetails({ id, close, saved }: { id: string; close: () => void; sav
       void distributions.refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed.');
+      toast.error(err instanceof Error ? err.message : 'Could not update the event.');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -475,13 +522,25 @@ function EventDetails({ id, close, saved }: { id: string; close: () => void; sav
       }}
       size="xl"
     >
-      <DialogTitle>{e?.title ?? 'Event details'}</DialogTitle>
+      <DialogClose asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-3 top-3"
+          aria-label="Close event details"
+          disabled={busy}
+        >
+          <X aria-hidden="true" />
+        </Button>
+      </DialogClose>
+      <DialogTitle className="pr-12">{e?.title ?? 'Event details'}</DialogTitle>
       <DialogDescription>Manage this event and its assignments.</DialogDescription>
       {event.isPending && <p role="status">Loading event…</p>}
       {event.error && (
-        <p role="alert">
+        <Alert variant="destructive">
           {event.error} <button onClick={event.refetch}>Try again</button>
-        </p>
+        </Alert>
       )}
       {e && (
         <div className="mt-5 space-y-4">
@@ -499,11 +558,24 @@ function EventDetails({ id, close, saved }: { id: string; close: () => void; sav
               {e.capacity !== null ? ` · ${e.capacity - e.occupied} remaining` : ''}
             </p>
           )}
-          <p className="text-sm text-text-muted">
-            {!e.syncEnabled
-              ? 'Google sync disabled'
-              : `Google: ${e.syncStatus === 'NOT_SYNCED' ? 'Pending' : words(e.syncStatus)}`}
-          </p>
+          <Alert
+            role="status"
+            variant={
+              !e.syncEnabled
+                ? 'info'
+                : e.syncStatus === 'FAILED'
+                  ? 'destructive'
+                  : e.syncStatus === 'SYNCED'
+                    ? 'success'
+                    : 'warning'
+            }
+          >
+            <AlertDescription>
+              {!e.syncEnabled
+                ? 'Google sync disabled'
+                : `Google: ${e.syncStatus === 'NOT_SYNCED' ? 'Pending' : words(e.syncStatus)}`}
+            </AlertDescription>
+          </Alert>
           {e.syncEnabled && e.syncStatus === 'FAILED' && (
             <Button
               disabled={busy}
@@ -595,8 +667,7 @@ function EventDetails({ id, close, saved }: { id: string; close: () => void; sav
             </div>
           )}
           {error && (
-            <div role="alert">
-              <p>{error}</p>
+            <div>
               <button
                 className="mt-2 underline"
                 onClick={() => {

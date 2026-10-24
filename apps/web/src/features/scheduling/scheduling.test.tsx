@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +7,9 @@ import { CalendarPage } from './CalendarPage';
 import { DistributionsPage } from './DistributionsPage';
 import { fetchAll, localDate, manilaIso } from './shared';
 import { apiFetch } from '../../lib/api-client';
+import { toast } from 'sonner';
 
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('../../lib/api-client', () => ({ apiFetch: vi.fn() }));
 const campaign = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -56,6 +58,82 @@ function show(component: React.ReactNode, route = '/') {
   );
 }
 describe('M4 scheduling screens', () => {
+  it('confirms a saved event once through a toast without a page banner', async () => {
+    show(<CalendarPage />);
+    const day = (await screen.findAllByRole('button', { name: /^Create event on / }))[0];
+    if (!day) throw new Error('Expected calendar days.');
+    fireEvent.click(day);
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Relief distribution' } });
+    await within(screen.getByRole('dialog')).findByRole('option', { name: campaign.name });
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Campaign'), {
+      target: { value: campaign.id },
+    });
+    fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Community hall' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save event' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledExactlyOnceWith('Event updated.'));
+    expect(screen.queryByText('Event updated.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+  it('uses the entire day box as the creation button and preselects its date', async () => {
+    show(<CalendarPage />);
+    const day = (await screen.findAllByRole('button', { name: /^Create event on / }))[0];
+    expect(day).toHaveClass('absolute', 'inset-0', 'size-full');
+    if (!day) throw new Error('Expected calendar days.');
+    const date = day.getAttribute('aria-label')?.replace('Create event on ', '');
+    fireEvent.click(day);
+    expect(screen.getByLabelText('Starts')).toHaveValue(`${date}T09:00`);
+    expect(screen.getByLabelText('Ends')).toHaveValue(`${date}T12:00`);
+  });
+  it('opens an existing event without triggering creation on its day', async () => {
+    const date = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+    const event = {
+      id: '22222222-2222-4222-8222-222222222222',
+      type: 'COLLECTION',
+      status: 'SCHEDULED',
+      title: 'Existing collection',
+      description: null,
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      startAt: `${date}T01:00:00Z`,
+      endAt: `${date}T04:00:00Z`,
+      location: 'Covered court',
+      capacity: null,
+      syncStatus: 'NOT_SYNCED',
+      revision: 1,
+      occupied: 0,
+      outstandingCollections: 0,
+      outstandingDistributions: 0,
+      syncEnabled: false,
+      externalEventId: null,
+      createdAt: '2026-10-01T00:00:00Z',
+    };
+    vi.mocked(apiFetch).mockImplementation((path) =>
+      Promise.resolve(
+        path.endsWith(`/calendar/events/${event.id}`)
+          ? { data: event }
+          : {
+              data: {
+                items: path.startsWith('/api/v1/campaigns')
+                  ? [campaign]
+                  : path.startsWith('/api/v1/calendar/events?')
+                    ? [event]
+                    : [],
+                total:
+                  path.startsWith('/api/v1/campaigns') ||
+                  path.startsWith('/api/v1/calendar/events?')
+                    ? 1
+                    : 0,
+              },
+            },
+      ),
+    );
+    show(<CalendarPage />);
+    const button = await screen.findByRole('button', { name: /Existing collection/ });
+    expect(button.closest('button')?.parentElement?.closest('button')).toBeNull();
+    fireEvent.click(button);
+    expect(await screen.findByRole('heading', { name: 'Existing collection' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Create event' })).toBeNull();
+  });
   it('opens the event form from a date and keeps accessible labels', async () => {
     show(<CalendarPage />);
     await waitFor(() =>
@@ -67,7 +145,7 @@ describe('M4 scheduling screens', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('Starts')).toHaveAttribute('type', 'datetime-local');
     expect(screen.getByLabelText('Location')).toBeRequired();
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close event form' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
   it('defaults to list on phones and shows an honest empty state', async () => {

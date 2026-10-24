@@ -36,8 +36,6 @@ export function ReportsPage() {
     kind: 'donations',
     query: { from: `${today.slice(0, 7)}-01`, to: today, format: 'json' },
   });
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [filterError, setFilterError] = useState('');
   const [printSnapshot, setPrintSnapshot] = useState<PrintSnapshot | null>(null);
   const printInFlight = useRef(false);
@@ -45,7 +43,6 @@ export function ReportsPage() {
     printInFlight.current = false;
     setPrintSnapshot(null);
     if (failed) {
-      setError('Could not open the print dialog. Try Print report again.');
       toast.error('Could not open the print dialog.');
     } else {
       toast.info('Print dialog closed. Your browser controls printing and saving.');
@@ -78,8 +75,6 @@ export function ReportsPage() {
   function print() {
     if (exportDisabled || !query.data || printInFlight.current) return;
     printInFlight.current = true;
-    setError('');
-    setNotice('');
     setPrintSnapshot({
       report: query.data.data,
       campaignLabel,
@@ -104,16 +99,12 @@ export function ReportsPage() {
       );
       return;
     }
-    setError('');
     setFilterError('');
-    setNotice('');
     setApplied({ kind: kind.data, query: parsed.data });
   }
 
   function download() {
     if (exportDisabled || !query.data) return;
-    setError('');
-    setNotice('');
     try {
       const report = query.data.data;
       const url = URL.createObjectURL(
@@ -126,16 +117,14 @@ export function ReportsPage() {
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setNotice('CSV download started for the report shown.');
       toast.success('CSV download started.');
     } catch {
-      setError('Could not download CSV. Try again.');
       toast.error('Could not download CSV.');
     }
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 break-words">
+    <div className="flex min-w-0 flex-col gap-6 wrap-break-word">
       <PageHeader
         title="Reports"
         description="Aggregate relief activity. Dates use Manila time; the To date includes the whole day."
@@ -224,16 +213,6 @@ export function ReportsPage() {
             Retry campaigns
           </button>
         </p>
-      )}
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {notice && (
-        <Alert role="status" variant="success">
-          <AlertDescription>{notice}</AlertDescription>
-        </Alert>
       )}
       <AsyncBoundary
         data={query.data?.data ?? null}

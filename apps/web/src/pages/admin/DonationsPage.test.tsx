@@ -1,10 +1,15 @@
+import { toast } from 'sonner';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ApiClientModule from '../../lib/api-client';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { DonationsPage } from './DonationsPage';
-import { apiFetch } from '../../lib/api-client';
+import { apiFetch, ApiClientError } from '../../lib/api-client';
 import type { CalendarEventDto, CampaignDto, DonationDto } from '@agapay/shared';
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 
 vi.mock('../../lib/api-client', async () => {
   const actual = await vi.importActual<typeof ApiClientModule>('../../lib/api-client');
@@ -144,6 +149,121 @@ beforeEach(() => {
 });
 
 describe('DonationsPage', () => {
+  it('loads campaign and collection choices beyond their first page', async () => {
+    respondWith([donation({ status: 'VERIFIED' })]);
+    const normal = vi.mocked(apiFetch).getMockImplementation();
+    vi.mocked(apiFetch).mockImplementation((path, options) => {
+      if (path.startsWith('/api/v1/campaigns?')) {
+        const second = path.includes('page=2');
+        return Promise.resolve({
+          data: {
+            total: 101,
+            items: second
+              ? [{ ...campaign(), name: 'Last campaign' }]
+              : Array.from({ length: 100 }, (_, index) => ({
+                  ...campaign(),
+                  id: `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`,
+                })),
+          },
+        });
+      }
+      if (path.startsWith('/api/v1/calendar/events?')) {
+        const second = path.includes('page=2');
+        return Promise.resolve({
+          data: {
+            total: 101,
+            items: second
+              ? [{ ...collectionEvent(), title: 'Last collection' }]
+              : Array.from({ length: 100 }, (_, index) => ({
+                  ...collectionEvent(),
+                  id: `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`,
+                })),
+          },
+        });
+      }
+      return normal?.(path, options) ?? Promise.resolve({});
+    });
+    renderPage();
+    expect(await screen.findByRole('option', { name: 'Last campaign' })).toBeInTheDocument();
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    expect(await screen.findByRole('option', { name: /Last collection/ })).toBeInTheDocument();
+  });
+  it('blocks duplicate pending rejection and dismissal, keeps the reason after failure and retries', async () => {
+    const normal = vi.mocked(apiFetch).getMockImplementation();
+    let reject: ((error: Error) => void) | undefined;
+    let attempts = 0;
+    vi.mocked(apiFetch).mockImplementation((path, options) => {
+      if (path.endsWith('/reject')) {
+        attempts++;
+        if (attempts === 1)
+          return new Promise((_resolve, fail) => {
+            reject = fail;
+          });
+        return Promise.resolve({ data: donation({ status: 'REJECTED' }) });
+      }
+      return normal?.(path, options) ?? Promise.resolve({});
+    });
+    renderPage();
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+    const reason = screen.getByLabelText('Reason the donor will see');
+    fireEvent.change(reason, { target: { value: 'Goods cannot be accepted.' } });
+    const confirm = screen.getByRole('button', { name: 'Confirm rejection' });
+    fireEvent.click(confirm);
+    await screen.findByText('Saving donation…');
+    expect(confirm).toBeDisabled();
+    expect(reason).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
+    fireEvent.click(confirm);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(attempts).toBe(1);
+    reject?.(
+      new ApiClientError(
+        'INTERNAL_ERROR',
+        'Temporary failure. Please retry.',
+        500,
+        undefined,
+        undefined,
+      ),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Temporary failure. Please retry.'),
+    );
+    expect(reason).toHaveValue('Goods cannot be accepted.');
+    expect(reason).toBeEnabled();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Donation rejected.'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+  it('refreshes a conflicting donation and shows a warning instead of leaving stale actions open', async () => {
+    const normal = vi.mocked(apiFetch).getMockImplementation();
+    vi.mocked(apiFetch).mockImplementation((path, options) =>
+      path.endsWith('/verify')
+        ? Promise.reject(
+            new ApiClientError('INVALID_STATE_TRANSITION', 'Changed', 409, undefined, undefined),
+          )
+        : (normal?.(path, options) ?? Promise.resolve({})),
+    );
+    renderPage();
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm verify' }));
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        'This donation changed while you were reviewing it. Review its latest status before trying again.',
+      ),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(
+      vi.mocked(apiFetch).mock.calls.filter(([path]) => path.startsWith('/api/v1/donations?'))
+        .length,
+    ).toBeGreaterThan(1);
+  });
   it('shows loading before the queue arrives', () => {
     vi.mocked(apiFetch).mockReturnValue(new Promise(() => {}));
     renderPage();
@@ -192,7 +312,7 @@ describe('DonationsPage', () => {
         );
       expect(verified).toBe(true);
     });
-    expect(await screen.findByText('Donation verified.')).toBeInTheDocument();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Donation verified.'));
   });
 
   it('requires a donor-visible reason before rejecting', async () => {

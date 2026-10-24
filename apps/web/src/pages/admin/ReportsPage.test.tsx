@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -5,6 +6,10 @@ import type { Report } from '@agapay/shared';
 import type * as ApiClientModule from '../../lib/api-client';
 import { apiFetch } from '../../lib/api-client';
 import { ReportsPage } from './ReportsPage';
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 
 vi.mock('../../lib/api-client', async () => ({
   ...(await vi.importActual<typeof ApiClientModule>('../../lib/api-client')),
@@ -210,7 +215,9 @@ describe('ReportsPage', () => {
     show();
     await screen.findByText('Food packs');
     fireEvent.click(screen.getByRole('button', { name: 'Print report' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not open the print dialog.');
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Could not open the print dialog.'),
+    );
     expect(document.querySelector('.report-print-root')).toBeNull();
     expect(screen.getByText('605')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Print report' }));
@@ -282,7 +289,10 @@ describe('ReportsPage', () => {
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
     expect(click).toHaveBeenCalledTimes(1);
     expect(apiFetch).toHaveBeenCalledTimes(count);
-    expect(screen.getByRole('status')).toHaveTextContent('CSV download started');
+    expect(toast.success).toHaveBeenCalledWith('CSV download started.');
+    expect(
+      screen.queryByText('CSV download started for the report shown.'),
+    ).not.toBeInTheDocument();
   });
   it('shows loading/error/retry states instead of fabricated zero data', async () => {
     vi.mocked(apiFetch).mockImplementation((path) =>

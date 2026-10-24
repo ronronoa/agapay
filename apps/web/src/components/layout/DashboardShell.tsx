@@ -153,7 +153,7 @@ function SidebarBody({
                 open={active || undefined}
                 className="group"
               >
-                <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-md px-3 text-xs font-semibold text-white/90 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white [&::-webkit-details-marker]:hidden">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-md px-3 text-xs font-semibold text-white/90 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white [&::-webkit-details-marker]:hidden">
                   {section}
                   <ChevronDown className="h-4 w-4 group-open:rotate-180" aria-hidden="true" />
                 </summary>
