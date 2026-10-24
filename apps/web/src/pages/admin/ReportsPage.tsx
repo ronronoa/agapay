@@ -1,83 +1,29 @@
-import { useState, type FormEvent } from 'react';
+import { useCallback, useRef, useState, type FormEvent } from 'react';
+import { Download, Printer } from 'lucide-react';
+import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import {
   campaignSchema,
   reportKindSchema,
   reportQuerySchema,
   reportResponseSchema,
-  reportTables,
   reportCsv,
   type ReportKind,
   type ReportQuery,
-  type ReportCell,
-  type ReportTable as ReportTableData,
 } from '@agapay/shared';
 import { useApiQuery } from '../../lib/use-api-query';
 import { fetchAll } from '../../lib/fetch-all';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { AsyncBoundary } from '../../components/ui/AsyncBoundary';
-import { DataTable } from '../../components/ui/DataTable';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/input';
-
-const labels: Record<ReportKind, string> = {
-  donations: 'Donations',
-  requests: 'Assistance requests',
-  inventory: 'Inventory',
-  distributions: 'Distributions',
-};
-const selectClass = 'w-full min-w-0 rounded-md border border-input bg-surface px-3 py-2 text-sm';
-const filterLabelClass = 'grid w-full min-w-0 gap-1 text-sm font-medium sm:w-auto sm:max-w-xs';
-function ReportTable({ table }: { table: ReportTableData }) {
-  const [page, setPage] = useState(1);
-  const rows = table.rows
-    .slice((page - 1) * 25, page * 25)
-    .map((cells, index) => ({ id: String(index), cells }));
-  return (
-    <section aria-label={table.title} className="space-y-3">
-      <h2 className="text-base font-semibold">{table.title}</h2>
-      {table.rows.length === 0 ? (
-        <p className="text-sm text-text-muted">No matching groups for these filters.</p>
-      ) : (
-        <DataTable<{ id: string; cells: ReportCell[] }>
-          caption={table.title}
-          rows={rows}
-          rowKey={(row) => row.id}
-          columns={table.headers.map((header, index) => ({
-            key: header,
-            header,
-            render: (row) => {
-              const cell = row.cells[index];
-              return cell === null || cell === undefined
-                ? 'No data'
-                : typeof cell === 'number'
-                  ? cell.toLocaleString('en-PH', { maximumFractionDigits: 2 })
-                  : cell;
-            },
-          }))}
-        />
-      )}
-      {table.rows.length > 25 && (
-        <nav aria-label={`${table.title} pages`} className="flex flex-wrap items-center gap-3">
-          <Button variant="accent" disabled={page === 1} onClick={() => setPage(page - 1)}>
-            Previous
-          </Button>
-          <span className="text-sm">
-            Page {page} of {Math.ceil(table.rows.length / 25)} · {table.rows.length} groups. CSV
-            includes all groups.
-          </span>
-          <Button
-            variant="accent"
-            disabled={page * 25 >= table.rows.length}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </Button>
-        </nav>
-      )}
-    </section>
-  );
-}
+import { NativeSelect } from '../../components/ui/native-select';
+import { Spinner } from '../../components/ui/spinner';
+import { Alert, AlertDescription } from '../../components/ui/alert';
+import { FieldGroup, FieldLayout } from '../../components/ui/field';
+import { Label } from '../../components/ui/label';
+import { ReportContent, reportLabels as labels } from './ReportContent';
+import { ReportPrint, type PrintSnapshot } from './ReportPrint';
 
 export function ReportsPage() {
   const today = new Intl.DateTimeFormat('en-CA', {
@@ -92,6 +38,19 @@ export function ReportsPage() {
   });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [filterError, setFilterError] = useState('');
+  const [printSnapshot, setPrintSnapshot] = useState<PrintSnapshot | null>(null);
+  const printInFlight = useRef(false);
+  const finishPrint = useCallback((failed: boolean) => {
+    printInFlight.current = false;
+    setPrintSnapshot(null);
+    if (failed) {
+      setError('Could not open the print dialog. Try Print report again.');
+      toast.error('Could not open the print dialog.');
+    } else {
+      toast.info('Print dialog closed. Your browser controls printing and saving.');
+    }
+  }, []);
   const params = new URLSearchParams();
   if (applied.query.from) params.set('from', applied.query.from);
   if (applied.query.to) params.set('to', applied.query.to);
@@ -105,9 +64,31 @@ export function ReportsPage() {
     queryKey: ['report-campaigns'],
     queryFn: () => fetchAll('/api/v1/campaigns', campaignSchema),
   });
+  const exportDisabled =
+    !query.data ||
+    query.isFetching ||
+    query.error !== null ||
+    Boolean(filterError) ||
+    printSnapshot !== null;
+  const campaignLabel = query.data?.data.campaignId
+    ? (campaigns.data?.find((campaign) => campaign.id === query.data?.data.campaignId)?.name ??
+      `Campaign ID: ${query.data.data.campaignId}`)
+    : 'All campaigns';
+
+  function print() {
+    if (exportDisabled || !query.data || printInFlight.current) return;
+    printInFlight.current = true;
+    setError('');
+    setNotice('');
+    setPrintSnapshot({
+      report: query.data.data,
+      campaignLabel,
+      preparedAt: new Date().toISOString(),
+    });
+  }
 
   function apply(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    if (printInFlight.current) return;
     const form = new FormData(event.currentTarget);
     const kind = reportKindSchema.safeParse(form.get('kind'));
     const parsed = reportQuerySchema.safeParse({
@@ -116,7 +97,7 @@ export function ReportsPage() {
       ...(form.get('campaignId') ? { campaignId: form.get('campaignId') } : {}),
     });
     if (!kind.success || !parsed.success) {
-      setError(
+      setFilterError(
         !parsed.success
           ? (parsed.error.issues[0]?.message ?? 'Check filters.')
           : 'Choose a report.',
@@ -124,14 +105,15 @@ export function ReportsPage() {
       return;
     }
     setError('');
+    setFilterError('');
     setNotice('');
     setApplied({ kind: kind.data, query: parsed.data });
-    if (kind.data === applied.kind && JSON.stringify(parsed.data) === JSON.stringify(applied.query))
-      query.refetch();
   }
 
   function download() {
-    if (!query.data || query.error || query.isPending) return;
+    if (exportDisabled || !query.data) return;
+    setError('');
+    setNotice('');
     try {
       const report = query.data.data;
       const url = URL.createObjectURL(
@@ -145,57 +127,95 @@ export function ReportsPage() {
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setNotice('CSV download started for the report shown.');
+      toast.success('CSV download started.');
     } catch {
       setError('Could not download CSV. Try again.');
+      toast.error('Could not download CSV.');
     }
   }
 
   return (
-    <div className="min-w-0 space-y-6 break-words">
+    <div className="flex min-w-0 flex-col gap-6 break-words">
       <PageHeader
         title="Reports"
         description="Aggregate relief activity. Dates use Manila time; the To date includes the whole day."
         actions={
-          <Button
-            disabled={!query.data || query.isPending || query.error !== null}
-            onClick={download}
-          >
-            Download CSV
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={exportDisabled} onClick={download}>
+              <Download data-icon="inline-start" aria-hidden="true" />
+              Download CSV
+            </Button>
+            <Button disabled={exportDisabled} aria-busy={printSnapshot !== null} onClick={print}>
+              {printSnapshot ? (
+                <Spinner data-icon="inline-start" aria-hidden="true" />
+              ) : (
+                <Printer data-icon="inline-start" aria-hidden="true" />
+              )}
+              {printSnapshot ? 'Preparing print…' : 'Print report'}
+            </Button>
+          </div>
         }
       />
-      <form onSubmit={apply} className="flex flex-wrap items-end gap-4">
-        <label className={filterLabelClass}>
-          Report
-          <select name="kind" className={selectClass} defaultValue="donations">
-            {Object.entries(labels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={filterLabelClass}>
-          From date
-          <Input name="from" type="date" defaultValue={applied.query.from ?? ''} />
-        </label>
-        <label className={filterLabelClass}>
-          To date
-          <Input name="to" type="date" defaultValue={applied.query.to ?? ''} />
-        </label>
-        <label className={filterLabelClass}>
-          Campaign
-          <select name="campaignId" className={selectClass} disabled={campaigns.isPending}>
-            <option value="">All campaigns</option>
-            {campaigns.data?.map((campaign) => (
-              <option key={campaign.id} value={campaign.id}>
-                {campaign.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button type="submit">Apply filters</Button>
+      <form onSubmit={(event) => event.preventDefault()} onChange={apply}>
+        <fieldset aria-label="Report filters" disabled={printSnapshot !== null} className="min-w-0">
+          <FieldGroup className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+            <FieldLayout>
+              <Label htmlFor="report-kind">Report</Label>
+              <NativeSelect id="report-kind" name="kind" defaultValue="donations">
+                {Object.entries(labels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FieldLayout>
+            <FieldLayout>
+              <Label htmlFor="report-from">From date</Label>
+              <Input
+                id="report-from"
+                name="from"
+                type="date"
+                aria-invalid={Boolean(filterError)}
+                aria-describedby={filterError ? 'report-filter-error' : undefined}
+                defaultValue={applied.query.from ?? ''}
+              />
+            </FieldLayout>
+            <FieldLayout>
+              <Label htmlFor="report-to">To date</Label>
+              <Input
+                id="report-to"
+                name="to"
+                type="date"
+                defaultValue={applied.query.to ?? ''}
+                aria-invalid={Boolean(filterError)}
+                aria-describedby={filterError ? 'report-filter-error' : undefined}
+              />
+            </FieldLayout>
+            <FieldLayout>
+              <Label htmlFor="report-campaign">Campaign</Label>
+              <NativeSelect id="report-campaign" name="campaignId" disabled={campaigns.isPending}>
+                <option value="">All campaigns</option>
+                {campaigns.data?.map((campaign) => (
+                  <option key={campaign.id} value={campaign.id}>
+                    {campaign.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FieldLayout>
+          </FieldGroup>
+        </fieldset>
       </form>
+      <p className="text-sm text-text-muted">
+        Filters update automatically. Printing and CSV include all groups in the report shown,
+        across every table page.
+      </p>
+      {filterError && (
+        <Alert id="report-filter-error" variant="destructive">
+          <AlertDescription>
+            {filterError} The report below keeps the last valid filters.
+          </AlertDescription>
+        </Alert>
+      )}
       {campaigns.isPending && <p role="status">Loading campaigns…</p>}
       {campaigns.error && (
         <p role="alert">
@@ -205,12 +225,21 @@ export function ReportsPage() {
           </button>
         </p>
       )}
-      {error && <p role="alert">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {notice && (
+        <Alert role="status" variant="success">
+          <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      )}
       <AsyncBoundary
         data={query.data?.data ?? null}
         error={query.error}
         isPending={query.isPending}
+        isRefreshing={query.isFetching && !query.isPending}
         onRetry={query.refetch}
         loadingLabel="Loading report…"
         isEmpty={() => false}
@@ -218,38 +247,14 @@ export function ReportsPage() {
         emptyDescription="Retry loading the report."
       >
         {(report) => (
-          <div className="space-y-6">
-            <div className="space-y-1">
-              <h2 className="font-display text-lg font-semibold">{labels[report.kind]}</h2>
-              <p className="text-sm text-text-muted">
-                {report.from ?? 'All dates'} to {report.to ?? 'present'} ·{' '}
-                {report.campaignId
-                  ? (campaigns.data?.find((campaign) => campaign.id === report.campaignId)?.name ??
-                    'Selected campaign')
-                  : 'All campaigns'}{' '}
-                · Snapshot{' '}
-                {new Date(report.asOf).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}
-              </p>
-              <p className="text-sm text-text-muted">
-                {report.kind === 'inventory'
-                  ? 'Stock is current. Date filters apply only to movements; this is not a historical stock balance.'
-                  : report.kind === 'distributions'
-                    ? 'Completed handovers only, dated by actual handover time. Quantities are actual goods handed over.'
-                    : report.kind === 'requests'
-                      ? 'Requests are dated by submission. Review averages include only records with valid review timestamps.'
-                      : 'Donations are dated by submission. Declared and received quantities are shown separately.'}
-              </p>
-            </div>
-            {report.total === 0 && <p>No matching records for these filters.</p>}
-            {reportTables(report).map((table) => (
-              <ReportTable
-                key={`${applied.kind}:${params}:${report.asOf}:${table.title}`}
-                table={table}
-              />
-            ))}
-          </div>
+          <ReportContent
+            key={`${applied.kind}:${params}:${report.asOf}`}
+            report={report}
+            campaignLabel={campaignLabel}
+          />
         )}
       </AsyncBoundary>
+      {printSnapshot && <ReportPrint snapshot={printSnapshot} onFinish={finishPrint} />}
     </div>
   );
 }

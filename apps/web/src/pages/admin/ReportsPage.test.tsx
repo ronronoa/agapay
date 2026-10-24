@@ -45,6 +45,15 @@ const requestReport: Report = {
   byCampaign: [],
   byBarangay: [],
 };
+const distributionReport: Report = {
+  ...base,
+  kind: 'distributions',
+  total: 2,
+  units: 15,
+  byCampaign: [],
+  byItem: [{ itemTypeId: 'food', itemTypeName: 'Food packs', unit: 'pack', quantity: 15 }],
+  byBarangay: [],
+};
 const inventoryReport: Report = {
   ...base,
   kind: 'inventory',
@@ -78,7 +87,9 @@ function result(path: string): unknown {
     ? requestReport
     : path.includes('/inventory?')
       ? inventoryReport
-      : donationReport;
+      : path.includes('/distributions?')
+        ? distributionReport
+        : donationReport;
   return {
     data: {
       ...report,
@@ -106,6 +117,118 @@ afterEach(() => {
 });
 
 describe('ReportsPage', () => {
+  it('uses the newest selection when an older report request finishes later', async () => {
+    let finishInventory: ((value: unknown) => void) | undefined;
+    let inventoryPath = '';
+    vi.mocked(apiFetch).mockImplementation((path) => {
+      if (path.includes('/inventory?')) {
+        inventoryPath = path;
+        return new Promise((resolve) => {
+          finishInventory = resolve;
+        });
+      }
+      return Promise.resolve(result(path));
+    });
+    show();
+    await screen.findByText('Food packs');
+    fireEvent.change(screen.getByLabelText('Report'), { target: { value: 'inventory' } });
+    await waitFor(() => expect(finishInventory).toBeDefined());
+    expect(screen.getByLabelText('Report')).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Report'), { target: { value: 'requests' } });
+    await screen.findByText('Requests submitted');
+    finishInventory?.(result(inventoryPath));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Print report' })).toBeEnabled());
+    expect(screen.getByLabelText('Report')).toHaveValue('requests');
+    expect(screen.queryByRole('region', { name: 'Current stock' })).toBeNull();
+    expect(screen.getByText('Requests submitted')).toBeInTheDocument();
+  });
+  it('prints every inventory group from the automatically filtered snapshot despite pagination', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+    show();
+    await screen.findByText('Food packs');
+    await screen.findByRole('option', { name: 'Campaign 100' });
+    fireEvent.change(screen.getByLabelText('Report'), { target: { value: 'inventory' } });
+    fireEvent.change(screen.getByLabelText('Campaign'), { target: { value: campaign(100).id } });
+    fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-11-01' } });
+    fireEvent.change(screen.getByLabelText('To date'), { target: { value: '2026-11-30' } });
+    const stock = await screen.findByRole('region', { name: 'Current stock' });
+    fireEvent.click(within(stock).getByRole('button', { name: 'Next' }));
+    expect(within(stock).queryByText('Stock 0')).toBeNull();
+    const count = vi.mocked(apiFetch).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Print report' }));
+    const pending = screen.getByRole('button', { name: 'Preparing print…' });
+    expect(pending).toBeDisabled();
+    expect(pending).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByLabelText('Report')).toBeDisabled();
+    fireEvent.click(pending);
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    const printable = document.querySelector('.report-print-root');
+    expect(printable).toHaveAttribute('hidden');
+    expect(printable).toHaveTextContent('Inventory');
+    expect(printable).toHaveTextContent('Campaign 100');
+    expect(printable).toHaveTextContent('2026-11-01 to 2026-11-30');
+    expect(printable).toHaveTextContent('Asia/Manila');
+    expect(printable).toHaveTextContent('Stock 0');
+    expect(printable).toHaveTextContent('Stock 29');
+    expect(printable).toHaveTextContent('Stock is current.');
+    expect(printable?.querySelector('[aria-label="Current stock"] tbody')?.children).toHaveLength(
+      30,
+    );
+    expect(printable?.querySelector('button, nav, input, select')).toBeNull();
+    expect(apiFetch).toHaveBeenCalledTimes(count);
+    fireEvent(window, new Event('afterprint'));
+    expect(document.querySelector('.report-print-root')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Print report' })).toBeEnabled();
+    expect(within(stock).getByText('Stock 29')).toBeInTheDocument();
+  });
+  it.each([
+    ['donations', 'Donations submitted', 'Declared'],
+    ['requests', 'Requests submitted', 'Average review time (hours)'],
+    ['distributions', 'Completed handovers', 'Units handed over'],
+  ])('prints %s summaries and semantics', async (kind, summary, detail) => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+    show();
+    await screen.findByText('Food packs');
+    if (kind !== 'donations') {
+      fireEvent.change(screen.getByLabelText('Report'), { target: { value: kind } });
+      await screen.findByText(summary);
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Print report' }));
+    await waitFor(() => expect(print).toHaveBeenCalledOnce());
+    expect(document.querySelector('.report-print-root')).toHaveTextContent(summary);
+    expect(document.querySelector('.report-print-root')).toHaveTextContent(detail);
+    fireEvent(window, new Event('afterprint'));
+  });
+  it('recovers from a print dialog failure without losing the displayed report', async () => {
+    const print = vi
+      .spyOn(window, 'print')
+      .mockImplementationOnce(() => {
+        throw new Error('Unavailable');
+      })
+      .mockImplementation(() => {});
+    show();
+    await screen.findByText('Food packs');
+    fireEvent.click(screen.getByRole('button', { name: 'Print report' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not open the print dialog.');
+    expect(document.querySelector('.report-print-root')).toBeNull();
+    expect(screen.getByText('605')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Print report' }));
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(2));
+    fireEvent(window, new Event('afterprint'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it('cancels queued printing and removes its data when leaving Reports', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+    vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(123);
+    const cancel = vi.spyOn(window, 'cancelAnimationFrame');
+    const view = show();
+    await screen.findByText('Food packs');
+    fireEvent.click(screen.getByRole('button', { name: 'Print report' }));
+    view.unmount();
+    expect(cancel).toHaveBeenCalledWith(123);
+    expect(document.querySelector('.report-print-root')).toBeNull();
+    expect(print).not.toHaveBeenCalled();
+  });
   it('renders complete aggregates and fetches every campaign page', async () => {
     show();
     await screen.findByText('Food packs');
@@ -114,14 +237,14 @@ describe('ReportsPage', () => {
     await screen.findByRole('option', { name: 'Campaign 100' });
     expect(apiFetch).toHaveBeenCalledWith('/api/v1/campaigns?page=2&pageSize=100');
   });
-  it('applies selected report, dates and campaign together', async () => {
+  it('automatically applies report, dates and campaign without a submit button', async () => {
     show();
     await screen.findByRole('option', { name: 'Campaign 100' });
     fireEvent.change(screen.getByLabelText('Report'), { target: { value: 'requests' } });
     fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-11-01' } });
     fireEvent.change(screen.getByLabelText('To date'), { target: { value: '2026-11-30' } });
     fireEvent.change(screen.getByLabelText('Campaign'), { target: { value: campaign(100).id } });
-    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
+    expect(screen.queryByRole('button', { name: 'Apply filters' })).toBeNull();
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith(
         `/api/v1/reports/requests?from=2026-11-01&to=2026-11-30&campaignId=${campaign(100).id}`,
@@ -134,11 +257,16 @@ describe('ReportsPage', () => {
     await screen.findByText('Food packs');
     fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-11-30' } });
     fireEvent.change(screen.getByLabelText('To date'), { target: { value: '2026-11-01' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
     expect(screen.getByRole('alert')).toHaveTextContent('From date must be on or before To date');
     expect(
       vi.mocked(apiFetch).mock.calls.filter(([path]) => path.includes('/reports/')),
     ).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Print report' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download CSV' })).toBeDisabled();
+    expect(screen.getByText('Food packs')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-11-01' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Print report' })).toBeEnabled());
+    expect(screen.queryByRole('alert')).toBeNull();
   });
   it('downloads the displayed snapshot without another API fetch', async () => {
     const createObjectURL = vi.fn().mockReturnValue('blob:report-fixture');
@@ -162,6 +290,7 @@ describe('ReportsPage', () => {
     const view = show();
     expect(screen.getByText('Loading report…')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download CSV' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Print report' })).toBeDisabled();
     view.unmount();
     let failed = false;
     vi.mocked(apiFetch).mockImplementation((path) => {
@@ -173,10 +302,12 @@ describe('ReportsPage', () => {
     });
     show();
     await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: 'Print report' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await screen.findByText('Food packs');
   });
   it('shows empty aggregates without hiding summary counts', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {});
     vi.mocked(apiFetch).mockImplementation((path) =>
       Promise.resolve(
         path.includes('/reports/')
@@ -197,12 +328,18 @@ describe('ReportsPage', () => {
     await screen.findByText('No matching records for these filters.');
     expect(screen.getByText('Donations submitted')).toBeInTheDocument();
     expect(screen.getByText('0')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Print report' }));
+    await waitFor(() => expect(print).toHaveBeenCalledOnce());
+    expect(document.querySelector('.report-print-root')).toHaveTextContent(
+      'No matching records for these filters.',
+    );
+    expect(document.querySelector('.report-print-root')).toHaveTextContent('Donations submitted');
+    fireEvent(window, new Event('afterprint'));
   });
   it('separates current inventory from dated movements and pages groups locally', async () => {
     show();
     await screen.findByText('Food packs');
     fireEvent.change(screen.getByLabelText('Report'), { target: { value: 'inventory' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
     await screen.findByText(/Stock is current. Date filters apply only to movements/);
     const stock = screen.getByRole('region', { name: 'Current stock' });
     expect(within(stock).getByText('Stock 0')).toBeInTheDocument();
