@@ -12,7 +12,8 @@ import {
 import { prisma } from '../../src/lib/prisma.js';
 import { createApp } from '../../src/app.js';
 import { hashPassword } from '../../src/modules/auth/password.js';
-import { FixedClock } from '../../src/lib/clock.js';
+import { signAccessToken } from '../../src/modules/auth/tokens.js';
+import { FixedClock, systemClock } from '../../src/lib/clock.js';
 import * as support from '../../src/modules/support/support.service.js';
 import {
   isSupportEmailCurrent,
@@ -288,9 +289,17 @@ describe('M5F donor support and inbox', () => {
   it('filters old staff alerts after demotion and immediately rejects deactivated access', async () => {
     try {
       await prisma.user.update({ where: { id: people.admin.id }, data: { role: 'DONOR' } });
+      expect(
+        (
+          await request(app)
+            .get('/api/v1/support/notifications')
+            .set('Authorization', auth('admin'))
+        ).status,
+      ).toBe(401);
+      const changedAuth = `Bearer ${await signAccessToken({ id: people.admin.id, role: 'DONOR' }, systemClock)}`;
       const inbox = await request(app)
         .get('/api/v1/support/notifications')
-        .set('Authorization', auth('admin'));
+        .set('Authorization', changedAuth);
       expect(
         inboxResponseSchema
           .parse(inbox.body)
@@ -300,7 +309,7 @@ describe('M5F donor support and inbox', () => {
         (
           await request(app)
             .get(`/api/v1/support/conversations/${conversationId}`)
-            .set('Authorization', auth('admin'))
+            .set('Authorization', changedAuth)
         ).status,
       ).toBe(404);
       await prisma.user.update({ where: { id: people.other.id }, data: { isActive: false } });
@@ -366,17 +375,15 @@ describe('M5F donor support and inbox', () => {
         },
       });
     });
-    await dispatchLive((id) =>
-      id === userId ? Promise.reject(new Error('Delivery down')) : Promise.resolve(),
+    const deliveryClock = new FixedClock(new Date('1900-01-01T00:00:00Z'));
+    await dispatchLive(
+      (id) => (id === userId ? Promise.reject(new Error('Delivery down')) : Promise.resolve()),
+      deliveryClock,
     );
     expect((await prisma.liveEvent.findUniqueOrThrow({ where: { id: event.id } })).attempts).toBe(
       1,
     );
-    for (let pass = 0; pass < 50; pass++) {
-      await dispatchLive(() => Promise.resolve(), new FixedClock(new Date(Date.now() + 60_000)));
-      if ((await prisma.liveEvent.findUniqueOrThrow({ where: { id: event.id } })).publishedAt)
-        break;
-    }
+    await dispatchLive(() => Promise.resolve(), new FixedClock(new Date('1900-01-01T00:00:02Z')));
     expect(
       (await prisma.liveEvent.findUniqueOrThrow({ where: { id: event.id } })).publishedAt,
     ).not.toBeNull();

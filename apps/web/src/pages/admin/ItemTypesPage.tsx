@@ -1,3 +1,4 @@
+import { hasRole } from '@agapay/shared';
 import { toast } from 'sonner';
 import {
   itemTypeListResponseSchema,
@@ -32,7 +33,7 @@ export function ItemTypesPage() {
   const params = new URLSearchParams({ page: String(page), pageSize: '25' });
   if (search.trim()) params.set('q', search.trim());
   const current = editing === 'new' ? null : editing;
-  const admin = getUser()?.role === 'ADMIN';
+  const admin = hasRole(getUser()?.role, ['ADMIN']);
   const query = useApiQuery(
     ['itemTypes', params.toString()],
     `/api/v1/item-types?${params}`,

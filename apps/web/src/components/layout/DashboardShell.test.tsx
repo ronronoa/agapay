@@ -227,7 +227,7 @@ describe('DashboardShell logout confirmation', () => {
 });
 
 describe('Shell account and navigation controls', () => {
-  it.each(['ADMIN', 'STAFF', 'DONOR'] as const)(
+  it.each(['SUPER_ADMIN', 'ADMIN', 'STAFF', 'DONOR'] as const)(
     'shows only permitted account shortcuts for %s',
     async (role) => {
       setSession('token', { ...staffer(), role });

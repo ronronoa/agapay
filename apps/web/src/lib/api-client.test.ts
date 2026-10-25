@@ -1,9 +1,10 @@
+import type { AuthUserDto } from '@agapay/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiFetch } from './api-client';
 import { clearSession, getAccessToken, setSession } from './session';
 import { waitFor } from '@testing-library/react';
 
-const user = {
+const user: AuthUserDto = {
   id: 'fixture',
   name: 'Fixture',
   email: 'fixture@example.invalid',

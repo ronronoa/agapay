@@ -3,8 +3,16 @@
 const defineEnum = <T extends readonly string[]>(values: T) =>
   Object.fromEntries(values.map((v) => [v, v])) as { [K in T[number]]: K };
 
-export const UserRole = defineEnum(['DONOR', 'STAFF', 'ADMIN'] as const);
+export const UserRole = defineEnum(['DONOR', 'STAFF', 'ADMIN', 'SUPER_ADMIN'] as const);
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
+
+// Super Admin inherits management access, never donor ownership permissions.
+export function hasRole(role: string | undefined, allowed: readonly string[]): boolean {
+  return (
+    role !== undefined &&
+    (allowed.includes(role) || (role === UserRole.SUPER_ADMIN && allowed.includes(UserRole.ADMIN)))
+  );
+}
 
 export const AuthTokenType = defineEnum(['VERIFY_EMAIL', 'RESET_PASSWORD'] as const);
 export type AuthTokenType = (typeof AuthTokenType)[keyof typeof AuthTokenType];

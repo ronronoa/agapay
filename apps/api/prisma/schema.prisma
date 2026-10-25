@@ -18,6 +18,7 @@ enum UserRole {
   DONOR
   STAFF
   ADMIN
+  SUPER_ADMIN
 }
 
 enum AuthTokenType {
@@ -142,6 +143,7 @@ model User {
   email           String    @unique // stored lowercase
   passwordHash    String
   role            UserRole  @default(DONOR)
+  sessionVersion  Int       @default(0)
   phone           String?
   emailVerifiedAt DateTime? @db.Timestamptz(3)
   isActive        Boolean   @default(true)

@@ -139,7 +139,7 @@ export async function scanOperationalNotifications(clock: Clock = systemClock) {
           userIds.push(
             ...(
               await tx.user.findMany({
-                where: { isActive: true, role: { in: ['ADMIN', 'STAFF'] } },
+                where: { isActive: true, role: { in: ['SUPER_ADMIN', 'ADMIN', 'STAFF'] } },
                 select: { id: true },
               })
             ).map((u) => u.id),
@@ -154,7 +154,7 @@ export async function scanOperationalNotifications(clock: Clock = systemClock) {
         title = 'Distribution schedule update';
         userIds = (
           await tx.user.findMany({
-            where: { isActive: true, role: { in: ['ADMIN', 'STAFF'] } },
+            where: { isActive: true, role: { in: ['SUPER_ADMIN', 'ADMIN', 'STAFF'] } },
             select: { id: true },
           })
         ).map((u) => u.id);

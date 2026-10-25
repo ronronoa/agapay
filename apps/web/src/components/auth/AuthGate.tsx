@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import type { UserRole as UserRoleType } from '@agapay/shared';
+import { hasRole, type UserRole as UserRoleType } from '@agapay/shared';
 import { getUser, subscribe } from '../../lib/session';
 import { restoreSession } from '../../lib/auth-api';
 import { ErrorState } from '../ui/ErrorState';
@@ -56,7 +56,7 @@ export function AuthGate({ children, roles }: AuthGateProps) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (roles !== undefined && !roles.some((role) => role === user.role)) {
+  if (roles !== undefined && !hasRole(user.role, roles)) {
     return <Navigate to="/forbidden" replace />;
   }
 

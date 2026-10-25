@@ -523,7 +523,7 @@ describe('M5D personnel safeguards', () => {
       .set(as(admin))
       .send({ role: 'STAFF' });
     expect(response.status).toBe(200);
-    expect((await request(app).get('/api/v1/users').set(as(otherAdmin))).status).toBe(403);
+    expect((await request(app).get('/api/v1/users').set(as(otherAdmin))).status).toBe(401);
   });
 
   it('resends invitations once, invalidates earlier links, and excludes private audit values', async () => {
@@ -603,6 +603,7 @@ describe('M5D personnel safeguards', () => {
 
 describe('M5D operational settings', () => {
   it('restricts settings, rejects stale changes, and applies item defaults', async () => {
+    const settingsActor = await makeActor(UserRole.SUPER_ADMIN);
     await prisma.operationalSettings.deleteMany();
     try {
       expect((await request(app).get('/api/v1/settings').set(as(staff))).status).toBe(403);
@@ -617,13 +618,13 @@ describe('M5D operational settings', () => {
         revision: 0,
       };
       const responses = await Promise.all([
-        request(app).patch('/api/v1/settings').set(as(admin)).send(settings),
-        request(app).patch('/api/v1/settings').set(as(admin)).send(settings),
+        request(app).patch('/api/v1/settings').set(as(settingsActor)).send(settings),
+        request(app).patch('/api/v1/settings').set(as(settingsActor)).send(settings),
       ]);
       expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
       const item = await request(app)
         .post('/api/v1/item-types')
-        .set(as(admin))
+        .set(as(settingsActor))
         .send({ name: uniqueName('Default stock'), category: 'FOOD', unit: 'pack' });
       expect(item.status).toBe(201);
       expect(itemDetailResponse(item).lowStockThreshold).toBe(9);
@@ -631,11 +632,12 @@ describe('M5D operational settings', () => {
         (
           await request(app)
             .patch('/api/v1/settings')
-            .set(as(admin))
+            .set(as(settingsActor))
             .send({ ...settings, revision: 1, retentionMonths: 0 })
         ).status,
       ).toBe(400);
     } finally {
+      await prisma.user.delete({ where: { id: settingsActor.id } });
       await prisma.operationalSettings.deleteMany();
     }
   });

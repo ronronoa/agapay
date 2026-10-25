@@ -1,3 +1,4 @@
+import { hasRole } from '@agapay/shared';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useState, useSyncExternalStore } from 'react';
 import { getUser, subscribe } from '../../lib/session';
@@ -38,7 +39,7 @@ function navLinkClass({ isActive }: { isActive: boolean }): string {
 
 export function AppShell() {
   const user = useSyncExternalStore(subscribe, getUser, getUser);
-  const isStaff = user !== null && (user.role === 'ADMIN' || user.role === 'STAFF');
+  const isStaff = user !== null && hasRole(user.role, ['ADMIN', 'STAFF']);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   return (
@@ -71,7 +72,7 @@ export function AppShell() {
             >
               {ADMIN_NAV_ITEMS.filter(
                 (item) =>
-                  item.roles === undefined || (user !== null && item.roles.includes(user.role)),
+                  item.roles === undefined || (user !== null && hasRole(user.role, item.roles)),
               ).map((item) => (
                 <NavLink key={item.to} to={item.to} className={navLinkClass}>
                   {item.label}

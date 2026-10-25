@@ -6,14 +6,17 @@ import { apiFetch } from '../../lib/api-client';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { AsyncBoundary } from '../../components/ui/AsyncBoundary';
 import { Button } from '../../components/ui/Button';
+import { getUser } from '../../lib/session';
 import { Input } from '../../components/ui/input';
 
 export function SettingsPage() {
+  const canEdit = getUser()?.role === 'SUPER_ADMIN';
   const query = useApiQuery(['settings'], '/api/v1/settings', settingsResponseSchema);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function save(event: FormEvent<HTMLFormElement>, revision: number) {
     event.preventDefault();
+    if (!canEdit || busy) return;
     const form = new FormData(event.currentTarget);
     const parsed = updateSettingsSchema.safeParse({
       revision,
@@ -44,7 +47,7 @@ export function SettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Administrator controls for email budgets and operational defaults."
+        description="Global email budgets and operational defaults. Only Super Admin can change these settings."
       />
       <p>
         Retention is a recorded policy only. Automatic anonymisation is not enabled. Credentials are
@@ -70,57 +73,62 @@ export function SettingsPage() {
             onSubmit={(e) => void save(e, settings.revision)}
             className="max-w-xl space-y-4 rounded-md border border-border bg-surface p-6"
           >
-            <label className="block">
-              Daily email limit
-              <Input
-                name="emailDailyLimit"
-                type="number"
-                required
-                min={1}
-                max={100000}
-                defaultValue={settings.emailDailyLimit}
-              />
-            </label>
-            <label className="block">
-              Rolling hourly email limit
-              <Input
-                name="emailHourlyLimit"
-                type="number"
-                required
-                min={1}
-                max={100000}
-                defaultValue={settings.emailHourlyLimit}
-              />
-            </label>
-            <p className="text-sm text-text-muted">
-              Existing critical-notification exceptions still apply. Provider limits remain in
-              force.
-            </p>
-            <label className="block">
-              Low stock default for new item types
-              <Input
-                name="lowStockDefault"
-                type="number"
-                required
-                min={0}
-                max={1000000}
-                defaultValue={settings.lowStockDefault}
-              />
-            </label>
-            <label className="block">
-              Retention policy (months)
-              <Input
-                name="retentionMonths"
-                type="number"
-                required
-                min={1}
-                max={120}
-                defaultValue={settings.retentionMonths}
-              />
-            </label>
-            <Button type="submit" disabled={busy}>
-              {busy ? 'Saving…' : 'Save settings'}
-            </Button>
+            {!canEdit && <p>Read-only. Contact a Super Admin to change global settings.</p>}
+            <fieldset disabled={!canEdit || busy} className="flex flex-col gap-4">
+              <label className="block">
+                Daily email limit
+                <Input
+                  name="emailDailyLimit"
+                  type="number"
+                  required
+                  min={1}
+                  max={100000}
+                  defaultValue={settings.emailDailyLimit}
+                />
+              </label>
+              <label className="block">
+                Rolling hourly email limit
+                <Input
+                  name="emailHourlyLimit"
+                  type="number"
+                  required
+                  min={1}
+                  max={100000}
+                  defaultValue={settings.emailHourlyLimit}
+                />
+              </label>
+              <p className="text-sm text-text-muted">
+                Existing critical-notification exceptions still apply. Provider limits remain in
+                force.
+              </p>
+              <label className="block">
+                Low stock default for new item types
+                <Input
+                  name="lowStockDefault"
+                  type="number"
+                  required
+                  min={0}
+                  max={1000000}
+                  defaultValue={settings.lowStockDefault}
+                />
+              </label>
+              <label className="block">
+                Retention policy (months)
+                <Input
+                  name="retentionMonths"
+                  type="number"
+                  required
+                  min={1}
+                  max={120}
+                  defaultValue={settings.retentionMonths}
+                />
+              </label>
+              {canEdit && (
+                <Button type="submit" disabled={busy}>
+                  {busy ? 'Saving…' : 'Save settings'}
+                </Button>
+              )}
+            </fieldset>
           </form>
         )}
       </AsyncBoundary>

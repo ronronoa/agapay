@@ -1,7 +1,7 @@
 import type { OperationalSettings } from '@agapay/shared';
 import { prisma, txOptions } from '../../lib/prisma.js';
 import { env } from '../../lib/env.js';
-import { conflict, businessRuleViolation } from '../../lib/errors.js';
+import { conflict, businessRuleViolation, forbidden } from '../../lib/errors.js';
 import type { AuthContext } from '../../types/express.js';
 import { write } from '../audit/audit.service.js';
 
@@ -28,10 +28,22 @@ export async function update(
   input: OperationalSettings,
   actor: AuthContext,
 ): Promise<OperationalSettings> {
+  if (actor.role !== 'SUPER_ADMIN') throw forbidden();
   if (env.EMAIL_PROVIDER === 'resend' && input.emailDailyLimit > 100) {
     throw businessRuleViolation('The configured Resend daily limit cannot exceed 100.');
   }
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+    const current = await tx.user.findUnique({
+      where: { id: actor.userId },
+      select: { role: true, isActive: true, sessionVersion: true },
+    });
+    if (
+      !current?.isActive ||
+      current.role !== 'SUPER_ADMIN' ||
+      (actor.sessionVersion !== undefined && current.sessionVersion !== actor.sessionVersion)
+    )
+      throw forbidden();
     await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52502)`;
     const existing = await tx.operationalSettings.findUnique({ where: { id: 1 } });
     if ((existing?.revision ?? 0) !== input.revision)

@@ -49,6 +49,7 @@ export function UsersPage() {
     userListResponseSchema,
   );
   const current = editing === 'new' ? null : editing;
+  const superAdmin = getUser()?.role === 'SUPER_ADMIN';
   const self = current !== null && current.id === getUser()?.id;
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -135,6 +136,7 @@ export function UsersPage() {
         <div className="flex flex-wrap gap-2">
           <Button
             variant="accent"
+            disabled={busy || (row.role === 'SUPER_ADMIN' && !superAdmin)}
             onClick={() => {
               setError('');
               setEditing(row);
@@ -142,11 +144,14 @@ export function UsersPage() {
           >
             Edit {row.name}
           </Button>
-          {row.role !== 'DONOR' && row.isActive && row.lastLoginAt === null && (
-            <Button disabled={busy} variant="accent" onClick={() => void resend(row)}>
-              Regenerate invitation
-            </Button>
-          )}
+          {(row.role !== 'SUPER_ADMIN' || superAdmin) &&
+            row.role !== 'DONOR' &&
+            row.isActive &&
+            row.lastLoginAt === null && (
+              <Button disabled={busy} variant="accent" onClick={() => void resend(row)}>
+                Regenerate invitation
+              </Button>
+            )}
         </div>
       ),
     },
@@ -190,7 +195,7 @@ export function UsersPage() {
             }}
           >
             <option value="">All roles</option>
-            {['ADMIN', 'STAFF', 'DONOR'].map((r) => (
+            {['SUPER_ADMIN', 'ADMIN', 'STAFF', 'DONOR'].map((r) => (
               <option key={r}>{r}</option>
             ))}
           </select>
@@ -293,6 +298,7 @@ export function UsersPage() {
               {current?.role === 'DONOR' && <option>DONOR</option>}
               <option>STAFF</option>
               <option>ADMIN</option>
+              {superAdmin && <option value="SUPER_ADMIN">Super Admin</option>}
             </select>
           </label>
           {current && (

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { loginSchema, passwordSchema, registerSchema } from '@agapay/shared';
 import { FixedClock } from '../../lib/clock.js';
 import { env } from '../../lib/env.js';
-import { ACCESS_TOKEN_AUDIENCE } from './auth.config.js';
+import { ACCESS_TOKEN_AUDIENCE, ACCESS_TOKEN_ISSUER } from './auth.config.js';
 import { generateOpaqueToken, hashPassword, hashToken, verifyPassword } from './password.js';
 import { signAccessToken, verifyAccessToken } from './tokens.js';
 
@@ -106,8 +106,35 @@ describe('access tokens (SEC-02)', () => {
     expect(await verifyAccessToken(token, clock)).toEqual({
       userId: 'user-1',
       role: 'ADMIN',
+      sessionVersion: 0,
       expiresAt: clock.now().getTime() + 900_000,
     });
+  });
+
+  it('round-trips Super Admin session versions', async () => {
+    const clock = new FixedClock(new Date('2026-01-01T00:00:00Z'));
+    const token = await signAccessToken(
+      { id: 'user-1', role: 'SUPER_ADMIN', sessionVersion: 3 },
+      clock,
+    );
+    expect(await verifyAccessToken(token, clock)).toMatchObject({
+      role: 'SUPER_ADMIN',
+      sessionVersion: 3,
+    });
+  });
+
+  it('treats an older token without a version as version zero', async () => {
+    const clock = new FixedClock(new Date('2026-01-01T00:00:00Z'));
+    const issuedAt = Math.floor(clock.now().getTime() / 1000);
+    const token = await new SignJWT({ role: 'ADMIN' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('user-1')
+      .setIssuer(ACCESS_TOKEN_ISSUER)
+      .setAudience(ACCESS_TOKEN_AUDIENCE)
+      .setIssuedAt(issuedAt)
+      .setExpirationTime(issuedAt + 900)
+      .sign(new TextEncoder().encode(env.JWT_ACCESS_SECRET));
+    expect(await verifyAccessToken(token, clock)).toMatchObject({ sessionVersion: 0 });
   });
 
   it('is rejected once it is past its 15 minute life', async () => {

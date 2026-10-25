@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { UserRole } from './enums.js';
 
 export const PASSWORD_MIN_LENGTH = 10;
 export const PASSWORD_MAX_LENGTH = 128;
@@ -87,7 +88,7 @@ export const authUserSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
-  role: z.string(),
+  role: z.nativeEnum(UserRole),
   phone: z.string().nullable(),
   emailVerified: z.boolean(),
   isActive: z.boolean(),

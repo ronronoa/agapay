@@ -294,10 +294,10 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
             >
               <label className="w-full text-sm">
                 <Input
+                  aria-label="Search donors"
                   value={q}
                   maxLength={100}
                   onChange={(event) => setQ(event.target.value)}
-                  aria-label="Search donors"
                   placeholder="Search donors"
                 />
               </label>

@@ -1,10 +1,11 @@
+import type { AuthUserDto } from '@agapay/shared';
 import { act, render, screen } from '@testing-library/react';
 import { useQuery } from '@tanstack/react-query';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clearSession, getUser, setSession } from '../../lib/session';
 import { SessionQueryProvider } from './SessionQueryProvider';
 
-const user = {
+const user: AuthUserDto = {
   id: 'first',
   name: 'Fixture',
   email: 'fixture@example.invalid',

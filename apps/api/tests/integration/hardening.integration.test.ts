@@ -72,7 +72,7 @@ describe('M5E authorization and demo rehearsal', () => {
             .get('/api/v1/reports/donations')
             .set('Authorization', `Bearer ${tokens.STAFF}`)
         ).status,
-      ).toBe(403);
+      ).toBe(401);
       await prisma.user.update({ where: { id: staffId }, data: { isActive: false } });
       expect(
         (await request(app).get('/api/v1/donations').set('Authorization', `Bearer ${tokens.STAFF}`))

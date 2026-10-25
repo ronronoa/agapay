@@ -1,3 +1,4 @@
+import type { AuthUserDto } from '@agapay/shared';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +11,7 @@ afterEach(() => {
   clearSession();
   vi.resetAllMocks();
 });
-const user = {
+const user: AuthUserDto = {
   id: 'staff',
   name: 'Fixture',
   email: 'fixture@example.invalid',
@@ -53,6 +54,11 @@ describe('AuthGate recovery and access', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await screen.findByText('Private operations');
     expect(restoreSession).toHaveBeenCalledTimes(2);
+  });
+  it('admits Super Admin through management gates', () => {
+    setSession('token', { ...user, role: 'SUPER_ADMIN' });
+    show();
+    expect(screen.getByText('Private operations')).toBeInTheDocument();
   });
   it('redirects a missing session to sign in', async () => {
     vi.mocked(restoreSession).mockResolvedValue(null);
