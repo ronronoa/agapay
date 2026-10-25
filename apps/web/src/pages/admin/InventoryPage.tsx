@@ -1,3 +1,4 @@
+import { hasRole } from '@agapay/shared';
 import { useRef, useState, useSyncExternalStore } from 'react';
 import {
   campaignListResponseSchema,
@@ -104,7 +105,7 @@ function uploadPhoto(rowId: string, file: File): Promise<void> {
 
 export function InventoryPage() {
   const user = useSyncExternalStore(subscribe, getUser, getUser);
-  const isAdmin = user?.role === 'ADMIN';
+  const isAdmin = hasRole(user?.role, ['ADMIN']);
   const [campaignId, setCampaignId] = useState('');
   const [itemTypeId, setItemTypeId] = useState('');
   const [lowStock, setLowStock] = useState(false);
@@ -818,7 +819,7 @@ export function InventoryPage() {
       >
         <DialogTitle>Transfer stock</DialogTitle>
         <DialogDescription>
-          Transfers are ADMIN-only and write paired out/in movement rows.
+          Transfers require administrator access and write paired out/in movement rows.
         </DialogDescription>
 
         {formError === null ? null : (

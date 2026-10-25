@@ -3,6 +3,7 @@ import type { UserRole } from '@agapay/shared';
 export interface AuthContext {
   userId: string;
   role: UserRole;
+  sessionVersion?: number;
 }
 
 declare global {

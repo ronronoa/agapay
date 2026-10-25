@@ -143,7 +143,7 @@ describe('M5D admin tools', () => {
   });
 
   it('keeps self-demotion and self-disable controls unavailable', async () => {
-    const admin = { ...user, role: 'ADMIN' };
+    const admin = { ...user, role: 'ADMIN' as const };
     setUser(admin);
     vi.mocked(apiFetch).mockResolvedValue({
       data: { items: [admin], page: 1, pageSize: 25, total: 1 },
@@ -156,6 +156,7 @@ describe('M5D admin tools', () => {
   });
 
   it('saves versioned settings and explains retention behavior', async () => {
+    setUser({ ...user, role: 'SUPER_ADMIN' });
     const values = {
       emailDailyLimit: 90,
       emailHourlyLimit: 60,
@@ -180,6 +181,38 @@ describe('M5D admin tools', () => {
         body: { ...values, emailDailyLimit: 75 },
       }),
     );
+  });
+
+  it('keeps Admin settings read-only and hides saving', async () => {
+    setUser({ ...user, role: 'ADMIN' });
+    vi.mocked(apiFetch).mockResolvedValue({
+      data: {
+        emailDailyLimit: 90,
+        emailHourlyLimit: 60,
+        lowStockDefault: 20,
+        retentionMonths: 12,
+        revision: 0,
+      },
+    });
+    show(<SettingsPage />);
+    expect(await screen.findByLabelText('Daily email limit')).toBeDisabled();
+    expect(screen.getByLabelText('Rolling hourly email limit')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Read-only. Contact a Super Admin/)).toBeInTheDocument();
+    expect(vi.mocked(apiFetch).mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(
+      false,
+    );
+  });
+  it('prevents Admin editing or inviting a Super Admin', async () => {
+    setUser({ ...user, role: 'ADMIN' });
+    vi.mocked(apiFetch).mockResolvedValue({
+      data: { items: [{ ...user, role: 'SUPER_ADMIN' }], page: 1, pageSize: 25, total: 1 },
+    });
+    show(<UsersPage />);
+    expect(await screen.findByRole('button', { name: 'Edit Personnel One' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Regenerate invitation' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add personnel' }));
+    expect(screen.queryByRole('option', { name: 'Super Admin' })).not.toBeInTheDocument();
   });
 
   it('uses audit cursors and resets pagination when filters change', async () => {

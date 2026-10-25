@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { UserRole } from '@agapay/shared';
+import { hasRole, type UserRole } from '@agapay/shared';
 import { forbidden, unauthenticated } from '../../lib/errors.js';
 import { systemClock } from '../../lib/clock.js';
 import { prisma } from '../../lib/prisma.js';
@@ -25,13 +25,16 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 
     const user = await prisma.user.findUnique({
       where: { id: claims.userId },
-      select: { isActive: true, role: true },
+      select: { isActive: true, role: true, sessionVersion: true },
     });
     if (user === null || !user.isActive) {
       throw unauthenticated('This account is no longer active.');
     }
 
-    req.auth = { userId: claims.userId, role: user.role };
+    if (user.role !== claims.role || user.sessionVersion !== claims.sessionVersion)
+      throw unauthenticated('Your permissions changed. Please sign in again.');
+
+    req.auth = { userId: claims.userId, role: user.role, sessionVersion: user.sessionVersion };
     next();
   } catch (err) {
     next(err);
@@ -46,7 +49,7 @@ export function requireRole(
       next(unauthenticated());
       return;
     }
-    if (!allowed.includes(req.auth.role)) {
+    if (!hasRole(req.auth.role, allowed)) {
       next(forbidden());
       return;
     }

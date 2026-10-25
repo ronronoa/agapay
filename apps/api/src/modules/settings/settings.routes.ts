@@ -9,7 +9,7 @@ settingsRouter.use(requireAuth, requireRole('ADMIN'));
 settingsRouter.get('/', async (_req, res) => {
   res.json({ data: await service.get() });
 });
-settingsRouter.patch('/', async (req, res) => {
+settingsRouter.patch('/', requireRole('SUPER_ADMIN'), async (req, res) => {
   const parsed = updateSettingsSchema.safeParse(req.body);
   if (!parsed.success) throw validationError(parsed.error.flatten());
   res.json({ data: await service.update(parsed.data, actorFrom(req)) });

@@ -53,7 +53,7 @@ export const supportMessageSchema = z.object({
   sequence: z.number().int(),
   senderId: z.string().uuid(),
   senderName: z.string(),
-  senderRole: z.enum(['DONOR', 'STAFF', 'ADMIN']),
+  senderRole: z.enum(['DONOR', 'STAFF', 'ADMIN', 'SUPER_ADMIN']),
   body: z.string(),
   createdAt: z.string(),
 });

@@ -54,10 +54,11 @@ async function seedAdmin() {
   if (email === undefined || password === undefined) return false;
 
   // Re-hashed each run, so rotating the env password takes effect on reseed.
+  // Existing roles are preserved, including an owner-promoted Super Admin.
   const passwordHash = await hashPassword(password);
   await prisma.user.upsert({
     where: { email },
-    update: { passwordHash, role: 'ADMIN', isActive: true },
+    update: { passwordHash, isActive: true },
     create: {
       name: 'Agapay Admin',
       email,
@@ -79,7 +80,7 @@ async function seedStaffDemo(): Promise<boolean> {
   const passwordHash = await hashPassword(password);
   await prisma.user.upsert({
     where: { email },
-    update: { passwordHash, role: 'STAFF', isActive: true },
+    update: { passwordHash, isActive: true },
     create: {
       name: 'Demo Staff',
       email,

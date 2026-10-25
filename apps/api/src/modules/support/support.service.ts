@@ -25,7 +25,7 @@ async function participants(tx: Prisma.TransactionClient, donorId: string) {
   return tx.user.findMany({
     where: {
       isActive: true,
-      OR: [{ id: donorId, role: 'DONOR' }, { role: { in: ['STAFF', 'ADMIN'] } }],
+      OR: [{ id: donorId, role: 'DONOR' }, { role: { in: ['STAFF', 'ADMIN', 'SUPER_ADMIN'] } }],
     },
     orderBy: { id: 'asc' },
     select: { id: true, role: true, email: true },

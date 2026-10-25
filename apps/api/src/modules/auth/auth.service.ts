@@ -82,6 +82,7 @@ const userSelect = {
   name: true,
   email: true,
   role: true,
+  sessionVersion: true,
   phone: true,
   emailVerifiedAt: true,
   isActive: true,
@@ -280,42 +281,52 @@ export async function refresh(
   clock: Clock,
 ): Promise<AuthResult> {
   const now = clock.now();
-  const existing = await prisma.refreshToken.findUnique({
-    where: { tokenHash: hashToken(rawToken) },
-    select: { id: true, userId: true, familyId: true, expiresAt: true, revokedAt: true },
-  });
+  const rotated = await prisma.$transaction(async (tx) => {
+    // ponytail: this global lock serializes refresh with personnel changes; use ordered per-user locks if refresh throughput becomes a bottleneck.
+    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+    const existing = await tx.refreshToken.findUnique({
+      where: { tokenHash: hashToken(rawToken) },
+      select: { id: true, userId: true, familyId: true, expiresAt: true, revokedAt: true },
+    });
 
-  if (existing === null || existing.expiresAt <= now) throw unauthenticated(SESSION_EXPIRED);
+    if (existing === null || existing.expiresAt <= now)
+      return { kind: 'error' as const, message: SESSION_EXPIRED };
 
-  const claimed = await prisma.refreshToken.updateMany({
-    where: { id: existing.id, revokedAt: null },
-    data: { revokedAt: now },
-  });
-
-  if (claimed.count === 0) {
-    await prisma.refreshToken.updateMany({
-      where: { familyId: existing.familyId, revokedAt: null },
+    const claimed = await tx.refreshToken.updateMany({
+      where: { id: existing.id, revokedAt: null },
       data: { revokedAt: now },
     });
-    logger.warn({ userId: existing.userId }, 'refresh token reuse detected; family revoked');
-    throw unauthenticated(SESSION_EXPIRED);
-  }
 
-  const user = await prisma.user.findUnique({ where: { id: existing.userId }, select: userSelect });
-  if (user === null) throw unauthenticated(SESSION_EXPIRED);
-  if (!user.isActive) throw unauthenticated('This account is no longer active.');
+    if (claimed.count === 0) {
+      await tx.refreshToken.updateMany({
+        where: { familyId: existing.familyId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      logger.warn({ userId: existing.userId }, 'refresh token reuse detected; family revoked');
+      // Commit family revocation before reporting failure; throwing here would roll it back.
+      return { kind: 'error' as const, message: SESSION_EXPIRED };
+    }
 
-  const refreshToken = generateOpaqueToken();
-  await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      familyId: existing.familyId,
-      tokenHash: hashToken(refreshToken),
-      expiresAt: new Date(now.getTime() + REFRESH_TOKEN_TTL_MS),
-      userAgent: meta.userAgent ?? null,
-      ipHash: hashIp(meta.ip) ?? null,
-    },
-  });
+    const user = await tx.user.findUnique({ where: { id: existing.userId }, select: userSelect });
+    if (user === null) return { kind: 'error' as const, message: SESSION_EXPIRED };
+    if (!user.isActive)
+      return { kind: 'error' as const, message: 'This account is no longer active.' };
+
+    const refreshToken = generateOpaqueToken();
+    await tx.refreshToken.create({
+      data: {
+        userId: user.id,
+        familyId: existing.familyId,
+        tokenHash: hashToken(refreshToken),
+        expiresAt: new Date(now.getTime() + REFRESH_TOKEN_TTL_MS),
+        userAgent: meta.userAgent ?? null,
+        ipHash: hashIp(meta.ip) ?? null,
+      },
+    });
+    return { kind: 'rotated' as const, user, refreshToken };
+  }, txOptions);
+  if (rotated.kind === 'error') throw unauthenticated(rotated.message);
+  const { user, refreshToken } = rotated;
 
   return {
     accessToken: await signAccessToken(user, clock),
@@ -394,7 +405,11 @@ export async function resetPassword(input: ResetPasswordInput, clock: Clock): Pr
 
       await tx.user.update({ where: { id: token.userId }, data: { passwordHash } });
       await tx.user.updateMany({
-        where: { id: token.userId, role: { in: ['ADMIN', 'STAFF'] }, emailVerifiedAt: null },
+        where: {
+          id: token.userId,
+          role: { in: ['SUPER_ADMIN', 'ADMIN', 'STAFF'] },
+          emailVerifiedAt: null,
+        },
         data: { emailVerifiedAt: now },
       });
       await tx.refreshToken.updateMany({

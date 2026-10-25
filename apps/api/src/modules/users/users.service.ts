@@ -3,11 +3,13 @@ import {
   AuthTokenType,
   NotificationType,
   UserRole,
+  hasRole,
   type UserRole as UserRoleType,
 } from '@agapay/shared';
 import { prisma, txOptions } from '../../lib/prisma.js';
 import { withRetry } from '../../lib/retry.js';
-import { businessRuleViolation, conflict, notFound } from '../../lib/errors.js';
+import { businessRuleViolation, conflict, forbidden, notFound } from '../../lib/errors.js';
+import type { Prisma } from '@prisma/client';
 import type { Clock } from '../../lib/clock.js';
 import { generateOpaqueToken, hashPassword, hashToken } from '../auth/password.js';
 import { write as writeAudit } from '../audit/audit.service.js';
@@ -25,6 +27,27 @@ function invitationDetails(token: string, now: Date): PersonnelInvitation {
     url: url.toString(),
     expiresAt: new Date(now.getTime() + RESET_TOKEN_TTL_MS).toISOString(),
   };
+}
+
+async function requireManager(
+  tx: Prisma.TransactionClient,
+  actor: AuthContext,
+  protectedAccount = false,
+) {
+  // The same lock covers bootstrap, invitations, Settings, and role changes.
+  await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+  const current = await tx.user.findUnique({
+    where: { id: actor.userId },
+    select: { role: true, isActive: true, sessionVersion: true },
+  });
+  if (
+    !current?.isActive ||
+    current.role !== actor.role ||
+    (actor.sessionVersion !== undefined && current.sessionVersion !== actor.sessionVersion) ||
+    !hasRole(current.role, ['ADMIN']) ||
+    (protectedAccount && current.role !== UserRole.SUPER_ADMIN)
+  )
+    throw forbidden();
 }
 
 const userSelect = {
@@ -119,6 +142,11 @@ export async function create(
   actor: AuthContext,
   clock: Clock,
 ): Promise<{ user: UserListRow; invitation: PersonnelInvitation }> {
+  if (
+    !hasRole(actor.role, ['ADMIN']) ||
+    (input.role === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN)
+  )
+    throw forbidden();
   const existing = await prisma.user.findUnique({
     where: { email: input.email },
     select: { id: true },
@@ -134,6 +162,7 @@ export async function create(
 
   try {
     return await prisma.$transaction(async (tx) => {
+      await requireManager(tx, actor, input.role === UserRole.SUPER_ADMIN);
       const created = await tx.user.create({
         data: {
           name: input.name,
@@ -196,28 +225,44 @@ export async function update(
   return withRetry(() =>
     prisma.$transaction(async (tx) => {
       // Serialize personnel changes so concurrent removals cannot lose the last admin.
-      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+      await requireManager(tx, actor);
       const target = await tx.user.findUnique({ where: { id }, select: userSelect });
       if (target === null) throw notFound('User');
+      if (
+        (target.role === UserRole.SUPER_ADMIN || input.role === UserRole.SUPER_ADMIN) &&
+        actor.role !== UserRole.SUPER_ADMIN
+      )
+        throw forbidden();
 
       // api.md section 13: an admin cannot demote or disable themselves. Without
       // this, the last admin can lock every admin account out of the system.
-      const demotesSelf = input.role !== undefined && input.role !== target.role;
+      const changesRole = input.role !== undefined && input.role !== target.role;
       const disablesSelf = input.isActive === false && target.isActive;
-      if (actor.userId === id && (demotesSelf || disablesSelf)) {
+      if (actor.userId === id && (changesRole || disablesSelf)) {
         throw businessRuleViolation('You cannot change your own role or disable your own account.');
       }
 
       if (
-        target.role === UserRole.ADMIN &&
+        (target.role === UserRole.ADMIN || target.role === UserRole.SUPER_ADMIN) &&
         target.isActive &&
-        (input.isActive === false || (input.role !== undefined && input.role !== UserRole.ADMIN))
+        (input.isActive === false || (input.role !== undefined && input.role !== target.role))
       ) {
         const wouldOrphan = await tx.user.count({
-          where: { role: UserRole.ADMIN, isActive: true, id: { not: id } },
+          where: {
+            role:
+              target.role === UserRole.SUPER_ADMIN
+                ? UserRole.SUPER_ADMIN
+                : { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
+            isActive: true,
+            id: { not: id },
+          },
         });
         if (wouldOrphan === 0) {
-          throw businessRuleViolation('At least one active admin account must remain.');
+          throw businessRuleViolation(
+            target.role === UserRole.SUPER_ADMIN
+              ? 'At least one active Super Admin account must remain.'
+              : 'At least one active admin account must remain.',
+          );
         }
       }
 
@@ -226,6 +271,7 @@ export async function update(
         data: {
           ...(input.name === undefined ? {} : { name: input.name }),
           ...(input.role === undefined ? {} : { role: input.role }),
+          ...(changesRole || disablesSelf ? { sessionVersion: { increment: 1 } } : {}),
           ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
           ...(input.phone === undefined ? {} : { phone: input.phone }),
         },
@@ -233,7 +279,7 @@ export async function update(
       if (changed.count !== 1) throw conflict('Account changed. Reload before saving.');
       const updated = await tx.user.findUniqueOrThrow({ where: { id }, select: userSelect });
 
-      if (input.isActive === false) {
+      if (input.isActive === false || changesRole) {
         // Disabling must end live sessions immediately, not at token expiry.
         await tx.refreshToken.updateMany({
           where: { userId: id, revokedAt: null },
@@ -265,9 +311,11 @@ export async function resendInvitation(
   const now = clock.now();
   const token = generateOpaqueToken();
   await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+    await requireManager(tx, actor);
     const user = await tx.user.findUnique({ where: { id }, select: userSelect });
     if (user === null) throw notFound('User');
+    if (user.role === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN)
+      throw forbidden();
     if (!user.isActive || user.role === UserRole.DONOR || user.lastLoginAt !== null) {
       throw businessRuleViolation('Only active personnel who have not signed in can be invited.');
     }
@@ -313,4 +361,40 @@ export async function resendInvitation(
     });
   }, txOptions);
   return invitationDetails(token, now);
+}
+
+// Owner-run bootstrap only; never exposed through an HTTP route or public registration.
+export async function bootstrapSuperAdmin(id: string, clock: Clock): Promise<void> {
+  await withRetry(() =>
+    prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+      if (await tx.user.count({ where: { role: UserRole.SUPER_ADMIN } }))
+        throw conflict('Super Admin already exists. Use personnel management instead.');
+      const target = await tx.user.findUnique({
+        where: { id },
+        select: { role: true, isActive: true },
+      });
+      if (!target?.isActive || target.role !== UserRole.ADMIN)
+        throw businessRuleViolation('Select an existing active Admin account.');
+      const changed = await tx.user.updateMany({
+        where: { id, role: UserRole.ADMIN, isActive: true },
+        data: { role: UserRole.SUPER_ADMIN, sessionVersion: { increment: 1 } },
+      });
+      if (changed.count !== 1) throw conflict('Account changed. Review it before retrying.');
+      await tx.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: clock.now() },
+      });
+      await writeAudit(
+        tx,
+        { userId: id, role: UserRole.ADMIN },
+        {
+          action: 'user.super_admin.bootstrap',
+          entityType: 'User',
+          entityId: id,
+          metadata: { role: UserRole.SUPER_ADMIN },
+        },
+      );
+    }, txOptions),
+  );
 }

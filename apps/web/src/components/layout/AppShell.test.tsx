@@ -6,7 +6,7 @@ import type { AuthUserDto } from '@agapay/shared';
 import { clearSession, setSession } from '../../lib/session';
 import { AppShell } from './AppShell';
 
-function account(role: string): AuthUserDto {
+function account(role: AuthUserDto['role']): AuthUserDto {
   return {
     id: 'u-1',
     name: 'Sam Staff',

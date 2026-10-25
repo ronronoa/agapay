@@ -4,7 +4,7 @@ import { authUserSchema, emailSchema } from './auth.js';
 
 export const userListQuerySchema = z
   .object({
-    role: z.enum([UserRole.DONOR, UserRole.STAFF, UserRole.ADMIN]).optional(),
+    role: z.enum([UserRole.DONOR, UserRole.STAFF, UserRole.ADMIN, UserRole.SUPER_ADMIN]).optional(),
     isActive: z
       .enum(['true', 'false'])
       .transform((value) => value === 'true')
@@ -22,7 +22,7 @@ export const createUserSchema = z
   .object({
     name: z.string().trim().min(2).max(120),
     email: emailSchema,
-    role: z.enum([UserRole.STAFF, UserRole.ADMIN]),
+    role: z.enum([UserRole.STAFF, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
     phone: z
       .string()
       .regex(/^09\d{9}$/, 'Use an 11-digit Philippine mobile number, e.g. 09171234567.')
@@ -35,7 +35,7 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 export const updateUserSchema = z
   .object({
     name: z.string().trim().min(2).max(120).optional(),
-    role: z.enum([UserRole.DONOR, UserRole.STAFF, UserRole.ADMIN]).optional(),
+    role: z.enum([UserRole.DONOR, UserRole.STAFF, UserRole.ADMIN, UserRole.SUPER_ADMIN]).optional(),
     isActive: z.boolean().optional(),
     phone: z
       .string()

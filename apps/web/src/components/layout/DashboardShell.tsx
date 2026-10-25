@@ -1,3 +1,4 @@
+import { hasRole } from '@agapay/shared';
 import { Link, NavLink, Outlet, useMatches, useLocation, matchPath } from 'react-router-dom';
 import { useSyncExternalStore, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -60,6 +61,7 @@ function initialsOf(name: string): string {
 
 function roleLabel(role: string, emailVerified: boolean): string {
   if (role === 'DONOR') return emailVerified ? 'Verified Donor' : 'Donor';
+  if (role === 'SUPER_ADMIN') return 'Super Admin';
   if (role === 'ADMIN') return 'Admin';
   return 'Operations';
 }
@@ -89,7 +91,7 @@ function SidebarBody({
   const closeProps = onNavigate === undefined ? {} : { onClick: onNavigate };
   const groups = new Map<string, DashboardNavItem[]>();
   for (const item of items) {
-    if (item.roles !== undefined && (user === null || !item.roles.includes(user.role))) continue;
+    if (item.roles !== undefined && (user === null || !hasRole(user.role, item.roles))) continue;
     const section = item.section ?? '';
     const group = groups.get(section) ?? [];
     group.push(item);
@@ -205,13 +207,13 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
   const messagesLayout = ['/admin/messages', '/donor/messages'].some(
     (path) => matchPath({ path, end: true }, pathname) !== null,
   );
-  const personnel = user?.role === 'ADMIN' || user?.role === 'STAFF';
+  const personnel = hasRole(user?.role, ['ADMIN', 'STAFF']);
   const section =
     items
       .toSorted((a, b) => b.to.length - a.to.length)
       .find(
         (item) =>
-          (item.roles === undefined || (user !== null && item.roles.includes(user.role))) &&
+          (item.roles === undefined || (user !== null && hasRole(user.role, item.roles))) &&
           matchPath({ path: item.to, end: item.end ?? false }, pathname) !== null,
       )?.label ?? (pathname === '/donate' ? 'Donate goods' : 'Agapay');
   const requestLogout = () => {

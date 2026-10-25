@@ -307,7 +307,7 @@ export async function transfer(
   input: InventoryTransferInput,
   actor: AuthContext,
 ): Promise<{ from: InventoryDto; to: InventoryDto }> {
-  if (actor.role !== 'ADMIN') throw forbidden();
+  if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') throw forbidden();
   return withRetry(() =>
     prisma.$transaction(async (tx) => {
       await requireItemTypeAndCampaign(tx, input.itemTypeId, input.fromCampaignId);
