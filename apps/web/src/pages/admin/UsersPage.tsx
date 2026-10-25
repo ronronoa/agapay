@@ -1,5 +1,6 @@
 import { toast } from 'sonner';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
+import { BadgeCheck } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   adminUserResponseSchema,
@@ -22,6 +23,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/input';
 import { Dialog, DialogTitle, DialogDescription, DialogFooter } from '../../components/ui/dialog';
 import { PersonnelInvitationDialog } from './PersonnelInvitationDialog';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 
 type AdminUser = UserListResponse['data']['items'][number];
 const selectClass = 'rounded-md border border-input bg-surface px-3 py-2 text-sm';
@@ -34,6 +36,8 @@ export function UsersPage() {
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<AdminUser | 'new' | null>(null);
   const [busy, setBusy] = useState(false);
+  const [verifying, setVerifying] = useState<AdminUser | null>(null);
+  const verificationInFlight = useRef(false);
   const [error, setError] = useState('');
   const [invitation, setInvitation] = useState<{
     details: PersonnelInvitation;
@@ -50,6 +54,7 @@ export function UsersPage() {
   );
   const current = editing === 'new' ? null : editing;
   const superAdmin = getUser()?.role === 'SUPER_ADMIN';
+  const canVerify = superAdmin || getUser()?.role === 'ADMIN';
   const self = current !== null && current.id === getUser()?.id;
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -110,10 +115,39 @@ export function UsersPage() {
     }
   }
 
+  async function verifyEmail() {
+    if (!verifying || verificationInFlight.current) return;
+    verificationInFlight.current = true;
+    setBusy(true);
+    try {
+      adminUserResponseSchema.parse(
+        await apiFetch(`/api/v1/users/${verifying.id}/verify-email`, { method: 'POST' }),
+      );
+      setVerifying(null);
+      toast.success('Donor email verified.');
+      await client.invalidateQueries({ queryKey: ['users'] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not verify donor email.');
+    } finally {
+      verificationInFlight.current = false;
+      setBusy(false);
+    }
+  }
+
   const columns: Column<AdminUser>[] = [
     { key: 'name', header: 'Name', render: (row) => row.name },
     { key: 'email', header: 'Email', render: (row) => row.email },
     { key: 'role', header: 'Role', render: (row) => row.role },
+    {
+      key: 'emailVerified',
+      header: 'Email verification',
+      render: (row) => (
+        <StatusBadge
+          label={row.emailVerified ? 'Verified' : 'Unverified'}
+          muted={!row.emailVerified}
+        />
+      ),
+    },
     {
       key: 'status',
       header: 'Status',
@@ -134,6 +168,12 @@ export function UsersPage() {
       header: 'Actions',
       render: (row) => (
         <div className="flex flex-wrap gap-2">
+          {canVerify && row.role === 'DONOR' && row.isActive && !row.emailVerified && (
+            <Button variant="accent" disabled={busy} onClick={() => setVerifying(row)}>
+              <BadgeCheck data-icon="inline-start" />
+              Verify email
+            </Button>
+          )}
           <Button
             variant="accent"
             disabled={busy || (row.role === 'SUPER_ADMIN' && !superAdmin)}
@@ -163,6 +203,7 @@ export function UsersPage() {
         description="Only administrators manage personnel. Donors register through the public form."
         actions={
           <Button
+            disabled={busy}
             onClick={() => {
               setError('');
               setEditing('new');
@@ -326,6 +367,16 @@ export function UsersPage() {
           </DialogFooter>
         </form>
       </Dialog>
+      <ConfirmDialog
+        open={verifying !== null}
+        title="Verify donor email?"
+        description={`Confirm you have checked that ${verifying?.email ?? 'this address'} belongs to this donor through another trusted channel. This marks the email as verified without requiring the email link and allows donation submission.`}
+        confirmLabel="Verify email"
+        pending={busy}
+        pendingLabel="Verifying…"
+        onConfirm={() => void verifyEmail()}
+        onCancel={() => setVerifying(null)}
+      />
       {invitation && (
         <PersonnelInvitationDialog
           invitation={invitation.details}

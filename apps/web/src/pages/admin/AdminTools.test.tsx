@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement, Ref } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,6 +51,99 @@ beforeEach(() => {
 });
 
 describe('M5D admin tools', () => {
+  it.each(['ADMIN', 'SUPER_ADMIN'] as const)(
+    '%s confirms donor verification and refreshes its status',
+    async (role) => {
+      setUser({ ...user, role });
+      const donor = { ...user, name: 'Donor One', role: 'DONOR' as const };
+      let verified = false;
+      vi.mocked(apiFetch).mockImplementation((_path, options) => {
+        if (options?.method === 'POST') {
+          verified = true;
+          return Promise.resolve({ data: { ...donor, emailVerified: true } });
+        }
+        return Promise.resolve({
+          data: { items: [{ ...donor, emailVerified: verified }], page: 1, pageSize: 25, total: 1 },
+        });
+      });
+      show(<UsersPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Verify email' }));
+      expect(apiFetch).not.toHaveBeenCalledWith(expect.anything(), { method: 'POST' });
+      expect(screen.getByRole('dialog', { name: 'Verify donor email?' })).toHaveTextContent(
+        /another trusted channel/,
+      );
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: 'Verify donor email?' })).getByRole('button', {
+          name: 'Verify email',
+        }),
+      );
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Donor email verified.'));
+      expect(apiFetch).toHaveBeenCalledWith(`/api/v1/users/${donor.id}/verify-email`, {
+        method: 'POST',
+      });
+      await waitFor(() => expect(screen.getByText('Verified')).toBeInTheDocument());
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    },
+  );
+
+  it('retains the confirmation after failure and blocks duplicate pending verification', async () => {
+    setUser({ ...user, role: 'ADMIN' });
+    let rejectVerification: (error: Error) => void = () => {};
+    vi.mocked(apiFetch).mockImplementation((_path, options) => {
+      if (options?.method === 'POST')
+        return new Promise((_resolve, reject) => {
+          rejectVerification = reject;
+        });
+      return Promise.resolve({
+        data: { items: [{ ...user, role: 'DONOR' }], page: 1, pageSize: 25, total: 1 },
+      });
+    });
+    show(<UsersPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify email' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Verify donor email?' })).getByRole('button', {
+        name: 'Verify email',
+      }),
+    );
+    expect(screen.getByRole('button', { name: 'Verifying…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Verifying…' }));
+    expect(
+      vi.mocked(apiFetch).mock.calls.filter(([, options]) => options?.method === 'POST'),
+    ).toHaveLength(1);
+    rejectVerification(new Error('Account changed. Reload before verifying.'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Account changed. Reload before verifying.'),
+    );
+    expect(screen.getByRole('dialog', { name: 'Verify donor email?' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('hides verification for personnel, verified donors, and disabled donors', async () => {
+    setUser({ ...user, role: 'ADMIN' });
+    vi.mocked(apiFetch).mockResolvedValue({
+      data: {
+        items: [
+          user,
+          {
+            ...user,
+            id: 'f65ca43d-45d5-4896-ad93-bda5f31e99df',
+            role: 'DONOR',
+            emailVerified: true,
+          },
+          { ...user, id: '2191e549-bcce-494d-8e2e-16b132ce730b', role: 'DONOR', isActive: false },
+        ],
+        page: 1,
+        pageSize: 25,
+        total: 3,
+      },
+    });
+    show(<UsersPage />);
+    await screen.findByText('User accounts');
+    expect(screen.queryByRole('button', { name: 'Verify email' })).not.toBeInTheDocument();
+  });
+
   it('creates personnel using an invitation without choosing a password', async () => {
     vi.mocked(apiFetch).mockImplementation((_path, options) =>
       Promise.resolve(

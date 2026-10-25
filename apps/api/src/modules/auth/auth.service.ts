@@ -170,6 +170,14 @@ async function queueEmailVerification(
   token: string,
   now: Date,
 ): Promise<void> {
+  // Serialize resends with manual verification so an old read cannot queue a
+  // fresh verification link after an administrator has verified the account.
+  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+  const current = await tx.user.findUnique({
+    where: { id: user.id },
+    select: { emailVerifiedAt: true },
+  });
+  if (current === null || current.emailVerifiedAt !== null) return;
   await tx.authToken.create({
     data: {
       userId: user.id,

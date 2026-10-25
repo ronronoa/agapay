@@ -14,6 +14,14 @@ import * as service from './users.service.js';
 export const usersRouter = Router();
 
 usersRouter.use(requireAuth, requireRole('ADMIN'));
+usersRouter.post('/:id/verify-email', async (req, res) => {
+  const parsed = userIdParamsSchema.safeParse(req.params);
+  if (!parsed.success) throw validationError(parsed.error.flatten());
+  const user = await service.verifyDonorEmail(parsed.data.id, actorFrom(req), systemClock);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ data: user });
+});
+
 usersRouter.post('/:id/invitation', async (req, res) => {
   const parsed = userIdParamsSchema.safeParse(req.params);
   if (!parsed.success) throw validationError(parsed.error.flatten());

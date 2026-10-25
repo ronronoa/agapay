@@ -303,6 +303,49 @@ export async function update(
   );
 }
 
+export async function verifyDonorEmail(
+  id: string,
+  actor: AuthContext,
+  clock: Clock,
+): Promise<UserListRow> {
+  return withRetry(() =>
+    prisma.$transaction(async (tx) => {
+      await requireManager(tx, actor);
+      const target = await tx.user.findUnique({ where: { id }, select: userSelect });
+      if (target === null) throw notFound('User');
+      if (target.role !== UserRole.DONOR || !target.isActive)
+        throw businessRuleViolation('Only active donor accounts can be verified here.');
+      if (target.emailVerifiedAt !== null) return toDto(target);
+
+      const now = clock.now();
+      const changed = await tx.user.updateMany({
+        where: { id, role: UserRole.DONOR, isActive: true, emailVerifiedAt: null },
+        data: { emailVerifiedAt: now },
+      });
+      if (changed.count !== 1) throw conflict('Account changed. Reload before verifying.');
+      await tx.authToken.updateMany({
+        where: { userId: id, type: AuthTokenType.VERIFY_EMAIL, usedAt: null },
+        data: { usedAt: now },
+      });
+      await tx.emailNotification.updateMany({
+        where: {
+          type: NotificationType.DONOR_VERIFY_EMAIL,
+          status: 'QUEUED',
+          dedupeKey: { startsWith: `verify-email:${id}:` },
+        },
+        data: { status: 'SUPPRESSED' },
+      });
+      await writeAudit(tx, actor, {
+        action: 'user.email.verify',
+        entityType: 'User',
+        entityId: id,
+        metadata: { method: 'manual' },
+      });
+      return toDto(await tx.user.findUniqueOrThrow({ where: { id }, select: userSelect }));
+    }, txOptions),
+  );
+}
+
 export async function resendInvitation(
   id: string,
   actor: AuthContext,
