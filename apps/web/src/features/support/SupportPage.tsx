@@ -298,7 +298,6 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                   value={q}
                   maxLength={100}
                   onChange={(event) => setQ(event.target.value)}
-                  aria-label="Search donors"
                   placeholder="Search donors"
                 />
               </label>
