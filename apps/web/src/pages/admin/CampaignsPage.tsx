@@ -47,9 +47,9 @@ import { Dialog, DialogTitle, DialogDescription, DialogFooter } from '../../comp
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { CreateCampaignDialog } from './CreateCampaignDialog';
 import { ApiClientError, apiFetch } from '../../lib/api-client';
+import { imageUrl } from '../../lib/image-url';
 
 type Action = 'activate' | 'complete' | 'archive' | 'delete';
-const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? '';
 const ACTIONS = {
   activate: {
     label: 'Activate',
@@ -110,11 +110,7 @@ function Cover({ campaign }: { campaign: CampaignDto }) {
   const [failed, setFailed] = useState(false);
   return campaign.coverImageUrl && !failed ? (
     <img
-      src={
-        campaign.coverImageUrl.startsWith('/uploads/')
-          ? `${API_BASE.replace(/\/$/, '')}${campaign.coverImageUrl}`
-          : campaign.coverImageUrl
-      }
+      src={imageUrl(campaign.coverImageUrl)}
       alt=""
       loading="lazy"
       className="aspect-video w-full object-cover"

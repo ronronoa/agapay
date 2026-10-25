@@ -109,6 +109,7 @@ describe('campaign cover image upload', () => {
         : await request(app).get(item.coverImageUrl).set('X-Forwarded-For', uniqueIp());
     expect(served?.status).toBe(200);
     expect(served?.headers['content-type']).toContain('image/png');
+    expect(served?.headers['cross-origin-resource-policy']).toBe('cross-origin');
   });
 
   it('replaces the image and removes the old file', async () => {
