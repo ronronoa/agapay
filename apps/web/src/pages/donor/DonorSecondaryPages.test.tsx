@@ -70,19 +70,40 @@ describe('DonorCampaignPage', () => {
 });
 
 describe('DonorMessagesPage', () => {
-  it('states messaging is coming soon with a disabled composer', () => {
+  it('opens a donor conversation with an enabled plain-text composer', async () => {
+    vi.mocked(apiFetch).mockImplementation((path) =>
+      Promise.resolve(
+        path.includes('/messages?')
+          ? { data: [], meta: { nextBefore: null, nextAfter: null } }
+          : {
+              data: {
+                id: '00000000-0000-4000-8000-000000000001',
+                donorId: '00000000-0000-4000-8000-000000000002',
+                donorName: 'Fixture',
+                donorEmail: 'fixture@example.invalid',
+                status: 'OPEN',
+                revision: 1,
+                lastSequence: 0,
+                lastMessageAt: '2026-10-22T00:00:00Z',
+                unreadCount: 0,
+              },
+            },
+      ),
+    );
     renderWith(<DonorMessagesPage />);
-    expect(screen.getByText('No conversations yet')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Type a message…')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    expect(await screen.findByLabelText('Message')).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Support question' } });
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
   });
 });
 
 describe('AdminMessagesPage', () => {
-  it('states messaging is coming soon with a disabled composer', () => {
+  it('loads the staff inbox and provides a donor search', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: [], meta: { page: 1, pageSize: 20, total: 0 } });
     renderWith(<AdminMessagesPage />);
-    expect(screen.getByText('No conversations yet')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Type a message…')).toBeDisabled();
+    expect(await screen.findByText('No conversations match these filters.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Search donors')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Refresh messages' })).toBeEnabled();
   });
 });
 

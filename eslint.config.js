@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/coverage/**',
       '**/generated/**',
+      '**/.opencode/**',
       'apps/api/prisma/migrations/**',
       // Validated by `prisma validate`, not ESLint.
       '**/*.prisma',
@@ -21,11 +22,8 @@ export default tseslint.config(
       parserOptions: {
         // Config files sit outside every tsconfig include.
         // This option does not accept `**` globs.
-        projectService: { 
-          allowDefaultProject: [
-            'apps/*/vitest.config.ts',
-            'packages/*/vitest.config.ts',
-          ],
+        projectService: {
+          allowDefaultProject: ['apps/*/vitest.config.ts', 'packages/*/vitest.config.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -63,15 +61,25 @@ export default tseslint.config(
   {
     // Default-project files have no tsconfig, so `process` and
     // `import.meta.dirname` are unresolved and the unsafe-* rules are noise.
-    files: [
-      'apps/*/vitest.config.ts',
-      'packages/*/vitest.config.ts',
-      'apps/*/prisma/*.ts',
-    ],
+    files: ['apps/*/vitest.config.ts', 'packages/*/vitest.config.ts', 'apps/*/prisma/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
     },
+  },
+  {
+    files: ['playwright.config.mjs', 'scripts/*e2e*.mjs', 'tests/e2e/*.mjs'],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        document: 'readonly',
+        window: 'readonly',
+      },
+    },
+    rules: { 'no-console': 'off' },
   },
 );

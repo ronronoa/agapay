@@ -241,7 +241,13 @@ export function renderEmail(
       };
     }
     case 'COLLECTION_REMINDER':
-    case 'DISTRIBUTION_REMINDER':
+    case 'DISTRIBUTION_REMINDER': {
+      const name = field(templateData, 'name');
+      const location = field(templateData, 'location');
+      const startAt = field(templateData, 'startAt');
+      const text = `Hi ${name}, your Agapay schedule is ${manilaDateTime(startAt)} at ${location}.`;
+      return { subject: 'Your Agapay schedule reminder', text, html: shell(paragraph(text)) };
+    }
     case 'DONATION_SUBMITTED': {
       const name = field(templateData, 'name');
       const referenceNumber = field(templateData, 'referenceNumber');
@@ -257,6 +263,20 @@ export function renderEmail(
           `Hi ${name},\n\nThanks for supporting relief efforts. ` +
           `Your donation ${referenceNumber} is awaiting verification. ` +
           `We will email you once our team reviews it.`,
+      };
+    }
+    case 'SUPPORT_UNREAD': {
+      const path = field(templateData, 'conversationPath');
+      if (!/^\/(donor|admin)\/messages\?conversation=[0-9a-f-]{36}$/.test(path))
+        throw internal('Support link is malformed.');
+      const url = new URL(path, webOrigin).toString();
+      return {
+        subject: 'You have an unread Agapay support message',
+        html: shell(
+          paragraph('You have an unread support message. Sign in to Agapay to read and reply.') +
+            `<p><a href="${escapeHtml(url)}">Open Messages</a></p>`,
+        ),
+        text: `You have an unread support message. Sign in to Agapay to read and reply: ${url}`,
       };
     }
     case 'DONATION_VERIFIED': {

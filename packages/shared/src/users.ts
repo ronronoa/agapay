@@ -16,6 +16,7 @@ export const userListQuerySchema = z
   .strict();
 
 export type UserListQuery = z.infer<typeof userListQuerySchema>;
+export const userIdParamsSchema = z.object({ id: z.string().uuid() }).strict();
 
 export const createUserSchema = z
   .object({
@@ -52,6 +53,16 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export const adminUserSchema = authUserSchema.extend({ lastLoginAt: z.string().nullable() });
 
 export const adminUserResponseSchema = z.object({ data: adminUserSchema });
+export const personnelInvitationSchema = z.object({
+  url: z.string().url(),
+  expiresAt: z.string().datetime(),
+});
+export type PersonnelInvitation = z.infer<typeof personnelInvitationSchema>;
+export const createUserResponseSchema = z.object({
+  data: adminUserSchema,
+  invitation: personnelInvitationSchema,
+});
+export const personnelInvitationResponseSchema = z.object({ data: personnelInvitationSchema });
 
 export const userListResponseSchema = z.object({
   data: z.object({

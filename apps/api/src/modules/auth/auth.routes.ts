@@ -1,23 +1,11 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
-import { ErrorCode, ERROR_STATUS } from '@agapay/shared';
-import { getRequestId } from '../../lib/http/request-context.js';
+import { rateLimitHandler } from '../../lib/http/rate-limit.js';
 import { hashToken } from './password.js';
 import { requireAuth, requireCsrf } from './auth.middleware.js';
 import * as controller from './auth.controller.js';
 
 export const authRouter = Router();
-
-const limiterHandler = (_req: Request, res: Response): void => {
-  res.setHeader('Retry-After', '900');
-  res.status(ERROR_STATUS.RATE_LIMITED).json({
-    error: {
-      code: ErrorCode.RATE_LIMITED,
-      message: 'Too many attempts. Please try again later.',
-      requestId: getRequestId() ?? 'unknown',
-    },
-  });
-};
 
 const perIp15Min = (limit: number) =>
   rateLimit({
@@ -25,7 +13,7 @@ const perIp15Min = (limit: number) =>
     limit,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
-    handler: limiterHandler,
+    handler: rateLimitHandler,
   });
 
 const perIpHourly = (limit: number) =>
@@ -34,7 +22,7 @@ const perIpHourly = (limit: number) =>
     limit,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
-    handler: limiterHandler,
+    handler: rateLimitHandler,
   });
 
 const byEmail = () =>
@@ -43,12 +31,12 @@ const byEmail = () =>
     limit: 5,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
-    handler: limiterHandler,
+    handler: rateLimitHandler,
     keyGenerator: (req: Request): string => {
       const body: unknown = req.body;
       if (typeof body !== 'object' || body === null) return 'no-email';
       const email = (body as { email?: unknown }).email;
-      return typeof email === 'string' ? hashToken(email.toLowerCase()) : 'no-email';
+      return typeof email === 'string' ? hashToken(email.trim().toLowerCase()) : 'no-email';
     },
   });
 

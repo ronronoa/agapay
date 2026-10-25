@@ -1,5 +1,6 @@
 // Business code depends on this, never a vendor SDK (OPS-05).
 export interface SendEmailInput {
+  attachments?: { filename: string; content: string; contentType: string }[];
   to: string;
   subject: string;
   html: string;

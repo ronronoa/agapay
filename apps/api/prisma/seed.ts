@@ -2,6 +2,7 @@
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { env } from '../src/lib/env.js';
+import { assertSafeDemo, seedDemoData, type DemoConfig } from './demo.js';
 
 const prisma = new PrismaClient();
 
@@ -93,17 +94,22 @@ async function seedStaffDemo(): Promise<boolean> {
 
 async function main() {
   const seedDemo = process.env.SEED_DEMO === 'true';
-  if (seedDemo && process.env.NODE_ENV === 'production') {
-    throw new Error('Refusing to seed demo data with NODE_ENV=production.');
-  }
+  const demoConfig: DemoConfig = {
+    nodeEnv: env.NODE_ENV,
+    databaseUrl: env.DATABASE_URL,
+    directUrl: env.DIRECT_URL,
+    emailProvider: env.EMAIL_PROVIDER,
+    googleEnabled: env.GOOGLE_CALENDAR_ENABLED,
+    password: env.SEED_DEMO_PASSWORD,
+  };
+  if (seedDemo) assertSafeDemo(demoConfig);
 
   await seedGeneralPool();
   await seedItemTypes();
   const seededAdmin = await seedAdmin();
   const seededStaff = seedDemo ? await seedStaffDemo() : false;
 
-  // TODO(M5): SEED_DEMO block — demo campaign, donors, donations, requests, and
-  // opening stock, so UAT screens are not empty.
+  if (seedDemo) await seedDemoData(prisma, demoConfig);
 
   console.log('Seed complete: General Pool campaign, item types.');
   console.log(seededAdmin ? 'Bootstrap admin ensured from env.' : 'No bootstrap admin configured.');

@@ -1,5 +1,10 @@
 import type { ReactNode } from 'react';
 import { Skeleton } from './skeleton';
+import { ErrorState } from './ErrorState';
+import { EmptyState } from './EmptyState';
+import { Alert, AlertDescription } from './alert';
+import { Button } from './Button';
+import { Spinner } from './spinner';
 
 export interface AsyncBoundaryProps<T> {
   data: T | null;
@@ -12,6 +17,7 @@ export interface AsyncBoundaryProps<T> {
   emptyDescription: string;
   emptyAction?: ReactNode;
   loadingLabel?: string;
+  isRefreshing?: boolean;
 }
 
 /**
@@ -29,48 +35,52 @@ export function AsyncBoundary<T>({
   emptyDescription,
   emptyAction,
   loadingLabel = 'Loading…',
+  isRefreshing = false,
 }: AsyncBoundaryProps<T>) {
   if (isPending) {
     return (
-      <div role="status">
+      <div role="status" aria-busy="true" className="flex flex-col gap-3 py-4">
         <Skeleton className="h-4 w-40" />
-        <p className="mt-2 text-sm text-text-muted">{loadingLabel}</p>
+        <Skeleton className="h-4 w-full max-w-md" />
+        <Skeleton className="h-4 w-3/4 max-w-sm" />
+        <p className="text-sm text-text-muted">{loadingLabel}</p>
       </div>
     );
   }
 
-  if (error !== null) {
-    return (
-      <div
-        role="alert"
-        className="rounded-md border border-border bg-surface px-6 py-10 text-center"
-      >
-        <p className="font-medium">Something went wrong</p>
-        <p className="mx-auto mt-1 max-w-md text-sm text-text-muted">{error}</p>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-4 inline-flex items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt"
-        >
-          Try again
-        </button>
-      </div>
-    );
+  if (error !== null && data === null) {
+    return <ErrorState message={error} onRetry={onRetry} isRetrying={isRefreshing} />;
   }
 
   if (data === null) return null;
 
-  if (isEmpty !== undefined && isEmpty(data)) {
-    return (
-      <div className="rounded-md border border-border bg-surface px-6 py-12 text-center">
-        <p className="font-medium">{emptyTitle}</p>
-        <p className="mx-auto mt-1 max-w-md text-sm text-text-muted">{emptyDescription}</p>
-        {emptyAction === undefined ? null : (
-          <div className="mt-4 flex justify-center">{emptyAction}</div>
-        )}
-      </div>
-    );
-  }
-
-  return <>{children(data)}</>;
+  return (
+    <>
+      {error !== null && (
+        <Alert>
+          <AlertDescription>{error} Showing the last loaded data.</AlertDescription>
+          <Button
+            variant="outline"
+            disabled={isRefreshing}
+            onClick={onRetry}
+            className="self-start"
+          >
+            {isRefreshing && <Spinner aria-hidden="true" data-icon="inline-start" />}
+            {isRefreshing ? 'Retrying…' : 'Try again'}
+          </Button>
+        </Alert>
+      )}
+      {isRefreshing && (
+        <p role="status" className="flex items-center gap-2 text-sm text-text-muted">
+          <Spinner aria-hidden="true" />
+          Refreshing…
+        </p>
+      )}
+      {isEmpty !== undefined && isEmpty(data) ? (
+        <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />
+      ) : (
+        children(data)
+      )}
+    </>
+  );
 }

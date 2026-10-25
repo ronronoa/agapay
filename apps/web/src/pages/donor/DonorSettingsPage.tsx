@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useSyncExternalStore } from 'react';
@@ -25,8 +26,6 @@ function initialsOf(name: string): string {
 
 export function DonorSettingsPage() {
   const user = useSyncExternalStore(subscribe, getUser, getUser);
-  const [profileMessage, setProfileMessage] = useState<string | null>(null);
-  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
   const profileForm = useForm<UpdateProfileInput>({
@@ -40,7 +39,6 @@ export function DonorSettingsPage() {
 
   function onProfileSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    setProfileMessage(null);
     void profileForm.handleSubmit((values) =>
       apiFetch<unknown>('/api/v1/auth/me', {
         method: 'PATCH',
@@ -50,10 +48,10 @@ export function DonorSettingsPage() {
           const parsed = authUserResponseSchema.safeParse(res);
           if (!parsed.success) throw new Error('Unexpected profile response.');
           setUser(parsed.data.data);
-          setProfileMessage('Profile saved.');
+          toast.success('Profile saved.');
         })
         .catch((err: unknown) => {
-          setProfileMessage(
+          toast.error(
             err instanceof ApiClientError ? err.message : 'Saving failed. Please try again.',
           );
         }),
@@ -62,15 +60,14 @@ export function DonorSettingsPage() {
 
   function onPasswordSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    setPasswordMessage(null);
     void passwordForm.handleSubmit((values) =>
       apiFetch('/api/v1/auth/change-password', { method: 'POST', body: values })
         .then(() => {
           passwordForm.reset();
-          setPasswordMessage('Password changed.');
+          toast.success('Password changed.');
         })
         .catch((err: unknown) => {
-          setPasswordMessage(
+          toast.error(
             err instanceof ApiClientError ? err.message : 'Saving failed. Please try again.',
           );
         }),
@@ -156,11 +153,6 @@ export function DonorSettingsPage() {
             >
               {profileForm.formState.isSubmitting ? 'Saving…' : 'Edit Profile'}
             </button>
-            {profileMessage === null ? null : (
-              <p role="status" className="mt-2 text-sm">
-                {profileMessage}
-              </p>
-            )}
           </div>
         </form>
       </section>
@@ -217,11 +209,6 @@ export function DonorSettingsPage() {
           >
             {passwordForm.formState.isSubmitting ? 'Saving…' : 'Change Password'}
           </button>
-          {passwordMessage === null ? null : (
-            <p role="status" className="text-sm">
-              {passwordMessage}
-            </p>
-          )}
         </form>
       </section>
     </div>

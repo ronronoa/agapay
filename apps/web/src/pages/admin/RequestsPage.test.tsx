@@ -1,10 +1,15 @@
+import { toast } from 'sonner';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ApiClientModule from '../../lib/api-client';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { RequestsPage } from './RequestsPage';
-import { apiFetch } from '../../lib/api-client';
+import { apiFetch, ApiClientError } from '../../lib/api-client';
 import type { AssistanceRequestDto, CampaignDto } from '@agapay/shared';
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 
 vi.mock('../../lib/api-client', async () => {
   const actual = await vi.importActual<typeof ApiClientModule>('../../lib/api-client');
@@ -115,6 +120,80 @@ beforeEach(() => {
 });
 
 describe('RequestsPage', () => {
+  it('retains a failed approval note for retry and renders errors in red', async () => {
+    respondWith([request({ status: 'UNDER_REVIEW' })]);
+    const normal = vi.mocked(apiFetch).getMockImplementation();
+    let failed = false;
+    vi.mocked(apiFetch).mockImplementation((path, options) => {
+      if (path.endsWith('/approve') && !failed) {
+        failed = true;
+        return Promise.reject(
+          new ApiClientError('INTERNAL_ERROR', 'Retry this action.', 500, undefined, undefined),
+        );
+      }
+      return normal?.(path, options) ?? Promise.resolve({});
+    });
+    renderPage();
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    const note = screen.getByLabelText('Approval note, optional');
+    fireEvent.change(note, { target: { value: 'Keep this approval note.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm approval' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Retry this action.'));
+    expect(note).toHaveValue('Keep this approval note.');
+    expect(note).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm approval' }));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Request approved and tracking number issued.'),
+    );
+    const writes = vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith('/approve'));
+    expect(writes).toHaveLength(2);
+    expect(writes[0]?.[1]?.body).toEqual(writes[1]?.[1]?.body);
+  });
+  it('sends API flag values rather than display labels', async () => {
+    renderPage();
+    await screen.findByText('REQ-2026-004281');
+    fireEvent.change(screen.getByLabelText('Flag'), { target: { value: 'duplicate' } });
+    await waitFor(() =>
+      expect(vi.mocked(apiFetch).mock.calls.some(([path]) => path.includes('flag=duplicate'))).toBe(
+        true,
+      ),
+    );
+  });
+  it('keeps pending approval safe from repeated clicks and dismissal', async () => {
+    respondWith([request({ status: 'UNDER_REVIEW' })]);
+    const normal = vi.mocked(apiFetch).getMockImplementation();
+    let finish: ((value: unknown) => void) | undefined;
+    vi.mocked(apiFetch).mockImplementation((path, options) =>
+      path.endsWith('/approve')
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : (normal?.(path, options) ?? Promise.resolve({})),
+    );
+    renderPage();
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    const note = screen.getByLabelText('Approval note, optional');
+    fireEvent.change(note, { target: { value: 'Eligible household.' } });
+    const confirm = screen.getByRole('button', { name: 'Confirm approval' });
+    fireEvent.click(confirm);
+    await screen.findByText('Saving request…');
+    expect(confirm).toBeDisabled();
+    expect(note).toBeDisabled();
+    fireEvent.click(confirm);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(
+      vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith('/approve')),
+    ).toHaveLength(1);
+    finish?.({ data: request({ status: 'APPROVED' }) });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Request approved and tracking number issued.'),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
   it('shows loading before the queue arrives', () => {
     vi.mocked(apiFetch).mockReturnValue(new Promise(() => {}));
     renderPage();
@@ -143,7 +222,7 @@ describe('RequestsPage', () => {
         );
       expect(claimed).toBe(true);
     });
-    expect(await screen.findByText('Request claimed for review.')).toBeInTheDocument();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Request claimed for review.'));
   });
 
   it('approves with an optional note', async () => {
@@ -164,9 +243,9 @@ describe('RequestsPage', () => {
         );
       expect(approved).toBe(true);
     });
-    expect(
-      await screen.findByText('Request approved and tracking number issued.'),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Request approved and tracking number issued.'),
+    );
   });
 
   it('requires a beneficiary-visible reason before rejecting', async () => {

@@ -7,6 +7,9 @@ import { CampaignsPage } from '../pages/admin/CampaignsPage';
 import { AuditLogPage } from '../pages/admin/AuditLogPage';
 import { ItemTypesPage } from '../pages/admin/ItemTypesPage';
 import { UsersPage } from '../pages/admin/UsersPage';
+import { SettingsPage } from '../pages/admin/SettingsPage';
+import { ReportsPage } from '../pages/admin/ReportsPage';
+import { EmailOperationsPage } from '../pages/admin/EmailOperationsPage';
 import { ForbiddenPage } from '../pages/ForbiddenPage';
 import { HomePage } from '../pages/HomePage';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
@@ -16,6 +19,8 @@ import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { NotImplementedPage } from '../pages/NotImplementedPage';
+import { CalendarPage } from '../features/scheduling/CalendarPage';
+import { DistributionsPage } from '../features/scheduling/DistributionsPage';
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { DonationsPage } from '../pages/admin/DonationsPage';
 import { RequestsPage } from '../pages/admin/RequestsPage';
@@ -39,11 +44,11 @@ import { VerifyRequestPage } from '../pages/public/VerifyRequestPage';
 const ADMIN_ROLES = ['ADMIN', 'STAFF'] as const;
 
 const DONOR_NAV_ITEMS = [
-  { to: '/donor', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/donor/activity', label: 'Activity', icon: Activity },
-  { to: '/donor/campaign', label: 'Campaign', icon: Megaphone },
-  { to: '/donor/messages', label: 'Messages', icon: MessageSquare },
-  { to: '/donor/settings', label: 'Settings', icon: Settings },
+  { to: '/donor', label: 'Dashboard', icon: LayoutDashboard, end: true, section: 'My donations' },
+  { to: '/donor/campaign', label: 'Campaigns', icon: Megaphone, section: 'My donations' },
+  { to: '/donor/activity', label: 'Donation activity', icon: Activity, section: 'My donations' },
+  { to: '/donor/messages', label: 'Messages', icon: MessageSquare, section: 'Account' },
+  { to: '/donor/settings', label: 'Settings', icon: Settings, section: 'Account' },
 ] as const;
 
 // Groups are declared now so the shell and guards have a stable shape, but every
@@ -179,10 +184,18 @@ const router = createBrowserRouter([
           </AuthGate>
         ),
       },
-      { path: 'distributions', element: <NotImplementedPage title="Distributions" /> },
-      { path: 'calendar', element: <NotImplementedPage title="Calendar" /> },
-      { path: 'reports', element: <NotImplementedPage title="Reports" /> },
-      { path: 'settings', element: <NotImplementedPage title="Settings" /> },
+      { path: 'distributions', element: <DistributionsPage /> },
+      { path: 'calendar', element: <CalendarPage /> },
+      { path: 'reports', element: <ReportsPage /> },
+      { path: 'emails', element: <EmailOperationsPage /> },
+      {
+        path: 'settings',
+        element: (
+          <AuthGate roles={['ADMIN']}>
+            <SettingsPage />
+          </AuthGate>
+        ),
+      },
     ],
   },
 
@@ -190,7 +203,6 @@ const router = createBrowserRouter([
     path: '/',
     element: <AppShell />,
     children: [
-      // Public
       { path: 'about', element: <NotImplementedPage title="About" /> },
       { path: 'how-it-works', element: <NotImplementedPage title="How It Works" /> },
       { path: 'campaigns', element: <PublicCampaignsPage /> },

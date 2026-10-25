@@ -89,7 +89,10 @@ export function RequestAssistancePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [goodsFilter, setGoodsFilter] = useState('');
+  const [summaryFields, setSummaryFields] = useState<string[]>([]);
+  const [outsideArea, setOutsideArea] = useState(false);
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
 
   const campaignsQuery = useApiQuery(
     ['public-campaigns'],
@@ -137,6 +140,37 @@ export function RequestAssistancePage() {
   const householdRaw = watch('householdSize');
   const household = typeof householdRaw === 'number' ? householdRaw : undefined;
   const watchedCampaignId = watch('campaignId');
+  const watchedBarangay = watch('barangay');
+  const watchedCity = watch('city');
+
+  const selectedCampaign = campaigns.find((campaign) => campaign.id === watchedCampaignId);
+  const allAreas = campaigns.flatMap((campaign) => campaign.areas);
+  const areaBarangays = [...new Set(allAreas.map((area) => area.barangay))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  const areaCities = [
+    ...new Set(
+      allAreas
+        .filter((area) => watchedBarangay === '' || area.barangay === watchedBarangay)
+        .map((area) => area.city),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+  const areaProvinces = [
+    ...new Set(
+      allAreas
+        .filter(
+          (area) =>
+            (watchedBarangay === '' || area.barangay === watchedBarangay) &&
+            (watchedCity === '' || area.city === watchedCity),
+        )
+        .map((area) => area.province),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+  const hasAreas = areaBarangays.length > 0;
+
+  const noAreaCampaign = selectedCampaign !== undefined && selectedCampaign.areas.length === 0;
+  const campaignsReady = !campaignsQuery.isPending && campaignsQuery.error === null;
+  const noCampaigns = campaignsReady && campaigns.length === 0;
 
   useEffect(() => {
     const preselected = params.get('campaign');
@@ -164,6 +198,22 @@ export function RequestAssistancePage() {
     stepHeadingRef.current?.focus();
   }, [step, success]);
 
+  // A failed Continue announces one summary and links each problem field, so
+  // screen-reader users hear what to fix without hunting the form. The list is
+  // compared before writing: a fresh array every render would loop forever.
+  useEffect(() => {
+    const labels = missingFields().map((field) => field.label);
+    setSummaryFields((current) =>
+      current.length === labels.length && current.every((label, index) => label === labels[index])
+        ? current
+        : labels,
+    );
+  }, [errors, step]);
+
+  useEffect(() => {
+    if (summaryFields.length > 0) errorSummaryRef.current?.focus();
+  }, [summaryFields]);
+
   function onPhoneChange(raw: string): void {
     let digits = raw.replace(/\D/g, '');
     if (digits.startsWith('63')) digits = digits.slice(2);
@@ -189,19 +239,48 @@ export function RequestAssistancePage() {
   }
 
   function continueFromInfo(): void {
+    if (noCampaigns) return;
     void trigger(['fullName', 'email', 'contactNumber', 'barangay', 'city', 'province']).then(
       (valid) => {
-        if (valid) setStep(1);
-        else focusFirstInvalid();
+        if (valid) {
+          setSummaryFields([]);
+          setStep(1);
+          return;
+        }
+        focusFirstInvalid();
       },
     );
   }
 
   function continueFromNeeds(): void {
     void trigger(['campaignId', 'items']).then((valid) => {
-      if (valid) setStep(2);
-      else focusFirstInvalid();
+      if (valid) {
+        setSummaryFields([]);
+        setStep(2);
+        return;
+      }
+      focusFirstInvalid();
     });
+  }
+
+  const STEP_FIELDS: Record<number, { name: keyof SubmitRequestInput; label: string }[]> = {
+    0: [
+      { name: 'fullName', label: 'Full name' },
+      { name: 'email', label: 'Email address' },
+      { name: 'contactNumber', label: 'Mobile number' },
+      { name: 'barangay', label: 'Barangay' },
+      { name: 'city', label: 'City or municipality' },
+      { name: 'province', label: 'Province' },
+    ],
+    1: [
+      { name: 'campaignId', label: 'Relief campaign' },
+      { name: 'items', label: 'Goods needed' },
+    ],
+  };
+
+  function missingFields(): { name: keyof SubmitRequestInput; label: string }[] {
+    const fields = STEP_FIELDS[step] ?? [];
+    return fields.filter((field) => errors[field.name] !== undefined);
   }
 
   function onSubmit(values: SubmitRequestInput): void {
@@ -234,7 +313,6 @@ export function RequestAssistancePage() {
     setCopied(true);
   }
 
-  const selectedCampaign = campaigns.find((campaign) => campaign.id === watchedCampaignId);
   const reviewItems = catalog.filter((item) => picks[item.id]?.checked === true);
   const stepLabel = STEP_LABELS[step] ?? '';
 
@@ -275,12 +353,45 @@ export function RequestAssistancePage() {
 
             <section
               aria-label="Assistance request form"
-              className="mt-6 rounded-xl border border-border bg-surface p-6 shadow-card sm:p-8"
+              className="mt-6 rounded-xs border border-border bg-surface p-6 shadow-card sm:p-8"
             >
               <form onSubmit={(event) => void handleSubmit(onSubmit)(event)} noValidate>
                 <h2 ref={stepHeadingRef} tabIndex={-1} className="sr-only">
                   {stepLabel}
                 </h2>
+
+                {summaryFields.length === 0 ? null : (
+                  <div
+                    ref={errorSummaryRef}
+                    tabIndex={-1}
+                    role="alert"
+                    aria-labelledby="error-summary-title"
+                    className="mb-4 rounded-md border border-border-strong bg-surface-alt p-4"
+                  >
+                    <h3 id="error-summary-title" className="text-sm font-semibold">
+                      There is a problem
+                    </h3>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {summaryFields.map((label) => (
+                        <li key={label}>
+                          <a href="#main" className="underline">
+                            {label}: check this field
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {noCampaigns ? (
+                  <div role="status" className="mb-4 rounded-md bg-surface-alt p-4 text-sm">
+                    <p className="font-semibold">No active relief campaigns right now</p>
+                    <p className="mt-1 text-text-muted">
+                      We cannot take assistance requests until a campaign opens. Please check back
+                      later.
+                    </p>
+                  </div>
+                ) : null}
 
                 {step === 0 ? (
                   <div>
@@ -350,49 +461,144 @@ export function RequestAssistancePage() {
                     <h3 className="mt-6 font-display text-base font-semibold">
                       Where do you live?
                     </h3>
+                    {!hasAreas && !campaignsQuery.isPending ? (
+                      <p role="status" className="mt-2 text-sm text-text-muted">
+                        No relief areas are open right now, so we cannot take a location-based
+                        request yet. Please check back later.
+                      </p>
+                    ) : null}
+                    <div className="mt-3">
+                      <label className="flex cursor-pointer items-start gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={outsideArea}
+                          onChange={(event) => {
+                            const next = event.target.checked;
+                            setOutsideArea(next);
+                            // Switching modes clears the other mode's values so a
+                            // stale dropdown pick can never mix with typed text.
+                            setValue('barangay', '');
+                            setValue('city', '');
+                            setValue('province', '');
+                          }}
+                          className="mt-1 h-4 w-4 accent-primary-subtle"
+                        />
+                        <span>My barangay isn&apos;t in the list — I&apos;ll type my location</span>
+                      </label>
+                      {outsideArea ? (
+                        <p role="status" className="mt-1 text-xs text-text-muted">
+                          We will check whether Agapay can reach your area. Requests outside a
+                          campaign&apos;s affected areas are reviewed by staff.
+                        </p>
+                      ) : null}
+                    </div>
                     <div className="mt-4 grid gap-4 sm:grid-cols-2">
                       <Field control={control} name="barangay" label="Barangay *">
-                        {(field) => (
-                          <Input
-                            id={field.id}
-                            autoComplete="address-level3"
-                            placeholder="Enter your barangay"
-                            value={typeof field.value === 'string' ? field.value : ''}
-                            onChange={(event) => field.onChange(event.target.value)}
-                            onBlur={field.onBlur}
-                            aria-invalid={field.invalid}
-                            aria-describedby={field.describedBy}
-                          />
-                        )}
+                        {(field) =>
+                          outsideArea ? (
+                            <Input
+                              id={field.id}
+                              autoComplete="address-level3"
+                              placeholder="Enter your barangay"
+                              value={typeof field.value === 'string' ? field.value : ''}
+                              onChange={(event) => field.onChange(event.target.value)}
+                              onBlur={field.onBlur}
+                              aria-invalid={field.invalid}
+                              aria-describedby={field.describedBy}
+                            />
+                          ) : (
+                            <select
+                              id={field.id}
+                              value={typeof field.value === 'string' ? field.value : ''}
+                              onChange={(event) => {
+                                field.onChange(event.target.value);
+                                setValue('city', '');
+                                setValue('province', '');
+                              }}
+                              onBlur={field.onBlur}
+                              aria-invalid={field.invalid}
+                              aria-describedby={field.describedBy}
+                              className={inputClass}
+                            >
+                              <option value="">Select your barangay</option>
+                              {areaBarangays.map((barangay) => (
+                                <option key={barangay} value={barangay}>
+                                  {barangay}
+                                </option>
+                              ))}
+                            </select>
+                          )
+                        }
                       </Field>
                       <Field control={control} name="city" label="City or municipality *">
-                        {(field) => (
-                          <Input
-                            id={field.id}
-                            autoComplete="address-level2"
-                            placeholder="Enter your city or municipality"
-                            value={typeof field.value === 'string' ? field.value : ''}
-                            onChange={(event) => field.onChange(event.target.value)}
-                            onBlur={field.onBlur}
-                            aria-invalid={field.invalid}
-                            aria-describedby={field.describedBy}
-                          />
-                        )}
+                        {(field) =>
+                          outsideArea ? (
+                            <Input
+                              id={field.id}
+                              autoComplete="address-level2"
+                              placeholder="Enter your city or municipality"
+                              value={typeof field.value === 'string' ? field.value : ''}
+                              onChange={(event) => field.onChange(event.target.value)}
+                              onBlur={field.onBlur}
+                              aria-invalid={field.invalid}
+                              aria-describedby={field.describedBy}
+                            />
+                          ) : (
+                            <select
+                              id={field.id}
+                              value={typeof field.value === 'string' ? field.value : ''}
+                              onChange={(event) => {
+                                field.onChange(event.target.value);
+                                setValue('province', '');
+                              }}
+                              onBlur={field.onBlur}
+                              aria-invalid={field.invalid}
+                              aria-describedby={field.describedBy}
+                              className={inputClass}
+                            >
+                              <option value="">Select your city or municipality</option>
+                              {areaCities.map((city) => (
+                                <option key={city} value={city}>
+                                  {city}
+                                </option>
+                              ))}
+                            </select>
+                          )
+                        }
                       </Field>
                     </div>
                     <Field control={control} name="province" label="Province *" className="mt-4">
-                      {(field) => (
-                        <Input
-                          id={field.id}
-                          autoComplete="address-level1"
-                          placeholder="Enter your province"
-                          value={typeof field.value === 'string' ? field.value : ''}
-                          onChange={(event) => field.onChange(event.target.value)}
-                          onBlur={field.onBlur}
-                          aria-invalid={field.invalid}
-                          aria-describedby={field.describedBy}
-                        />
-                      )}
+                      {(field) =>
+                        outsideArea ? (
+                          <Input
+                            id={field.id}
+                            autoComplete="address-level1"
+                            placeholder="Enter your province"
+                            value={typeof field.value === 'string' ? field.value : ''}
+                            onChange={(event) => field.onChange(event.target.value)}
+                            onBlur={field.onBlur}
+                            aria-invalid={field.invalid}
+                            aria-describedby={field.describedBy}
+                          />
+                        ) : (
+                          <select
+                            id={field.id}
+                            value={typeof field.value === 'string' ? field.value : ''}
+                            onChange={(event) => field.onChange(event.target.value)}
+                            onBlur={field.onBlur}
+                            aria-invalid={field.invalid}
+                            aria-describedby={field.describedBy}
+                            className={inputClass}
+                          >
+                            <option value="">Select your province</option>
+                            {areaProvinces.map((province) => (
+                              <option key={province} value={province}>
+                                {province}
+                              </option>
+                            ))}
+                          </select>
+                        )
+                      }
                     </Field>
                     <p className="mt-1 text-xs text-text-muted">
                       Only request location details necessary to determine campaign eligibility.
@@ -412,7 +618,8 @@ export function RequestAssistancePage() {
                     <button
                       type="button"
                       onClick={continueFromInfo}
-                      className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      disabled={noCampaigns}
+                      className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       Continue to assistance needs →
                     </button>
@@ -454,6 +661,16 @@ export function RequestAssistancePage() {
                         </select>
                       )}
                     </Field>
+                    {noAreaCampaign ? (
+                      <p role="status" className="mt-1 text-sm text-text-muted">
+                        This campaign has no affected areas yet, so it cannot take location-based
+                        requests. Choose another campaign.
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-text-muted">
+                      Household details help us check eligibility. Limits on goods are shown next to
+                      each item.
+                    </p>
 
                     <Field
                       control={control}

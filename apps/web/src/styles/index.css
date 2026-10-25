@@ -2,6 +2,86 @@
 @import 'tailwindcss';
 @import './tokens.css';
 
+/* Avoid the hidden attribute: Tailwind's layered !important reset wins in print. */
+.report-print-root {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  /* The portal is a direct body child, so no dashboard clipping or pagination survives. */
+  body:has(> .report-print-root) > :not(.report-print-root) {
+    display: none !important;
+  }
+
+  body:has(> .report-print-root) {
+    background: white;
+    overflow: visible;
+  }
+
+  .report-print-root {
+    display: block !important;
+    color: black;
+    background: white;
+    font-size: 10pt;
+    line-height: 1.4;
+  }
+
+  .report-print-root * {
+    color: inherit;
+    background: transparent;
+    box-shadow: none;
+    overflow-wrap: anywhere;
+  }
+
+  .report-print-root section > div {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .report-print-root table {
+    width: 100%;
+  }
+  .report-print-root thead {
+    display: table-header-group;
+  }
+  .report-print-root tr {
+    break-inside: avoid;
+  }
+  .report-print-root th,
+  .report-print-root td {
+    padding: 2mm;
+  }
+  .report-print-root h1,
+  .report-print-root h2,
+  .report-print-root h3 {
+    break-after: avoid;
+  }
+}
+
+@layer components {
+  .sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    scrollbar-color: color-mix(in srgb, var(--color-surface) 40%, transparent) transparent;
+  }
+
+  .sidebar-scroll:hover,
+  .sidebar-scroll:focus-within {
+    scrollbar-color: color-mix(in srgb, var(--color-surface) 65%, transparent) transparent;
+  }
+
+  @media (forced-colors: active) {
+    .sidebar-scroll {
+      scrollbar-color: auto;
+    }
+  }
+}
+
 @layer base {
   html {
     color-scheme: light;

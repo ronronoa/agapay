@@ -7,10 +7,16 @@ export function Dialog({
   open,
   onOpenChange,
   children,
+  size = 'md',
+  className,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode;
+  // Wide dialogs hold multi-column forms; default stays the compact dialog
+  // every existing caller already uses.
+  size?: 'md' | 'xl' | 'wide';
+  className?: string;
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -28,7 +34,11 @@ export function Dialog({
             </DialogPrimitive.Overlay>
             <DialogPrimitive.Content forceMount asChild>
               <motion.div
-                className="fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-lg border border-border bg-surface p-6 shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className={cn(
+                  'fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[calc(100vw-2rem)] overflow-y-auto rounded-sm border border-border bg-surface p-6 shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+                  size === 'wide' ? 'max-w-4xl' : size === 'xl' ? 'max-w-xl' : 'max-w-md',
+                  className,
+                )}
                 initial={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}
                 animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}
                 exit={{ opacity: 0, scale: 0.96, x: '-50%', y: '-50%' }}

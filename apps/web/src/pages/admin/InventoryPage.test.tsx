@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ApiClientModule from '../../lib/api-client';
@@ -12,6 +13,10 @@ import type {
   InventoryMovementDto,
   ItemTypeDto,
 } from '@agapay/shared';
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 
 vi.mock('../../lib/api-client', async () => {
   const actual = await vi.importActual<typeof ApiClientModule>('../../lib/api-client');
@@ -144,6 +149,39 @@ beforeEach(() => {
 });
 
 describe('InventoryPage', () => {
+  it('keeps a stock adjustment pending through photo upload and prevents a second adjustment', async () => {
+    const normal = vi.mocked(apiFetch).getMockImplementation();
+    let finishPhoto: ((value: unknown) => void) | undefined;
+    vi.mocked(apiFetch).mockImplementation((path, options) =>
+      path.endsWith('/image')
+        ? new Promise((resolve) => {
+            finishPhoto = resolve;
+          })
+        : (normal?.(path, options) ?? Promise.resolve({})),
+    );
+    renderPage();
+    await screen.findAllByText('Food Packs');
+    fireEvent.click(screen.getByRole('button', { name: 'Restock' }));
+    const quantity = screen.getByLabelText('Quantity');
+    fireEvent.change(quantity, { target: { value: '25' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New arrival.' } });
+    fireEvent.change(screen.getByLabelText('Item photo, optional'), {
+      target: { files: [new File(['pixels'], 'rice.png', { type: 'image/png' })] },
+    });
+    const confirm = screen.getByRole('button', { name: 'Confirm supply' });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(finishPhoto).toBeDefined());
+    expect(confirm).toBeDisabled();
+    expect(quantity).toBeDisabled();
+    fireEvent.click(confirm);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(
+      vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith('/adjustments')),
+    ).toHaveLength(1);
+    finishPhoto?.({ data: row() });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Stock added with photo.'));
+  });
   it('shows loading before stock arrives', () => {
     vi.mocked(apiFetch).mockReturnValue(new Promise(() => {}));
     renderPage();
@@ -215,7 +253,7 @@ describe('InventoryPage', () => {
         );
       expect(transferred).toBe(true);
     });
-    expect(await screen.findByText('Stock transferred.')).toBeInTheDocument();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Stock transferred.'));
   });
 
   it('hides transfers from non-admin staff', async () => {
@@ -269,7 +307,7 @@ describe('InventoryPage', () => {
         );
       expect(uploaded).toBe(true);
     });
-    expect(await screen.findByText('Photo saved.')).toBeInTheDocument();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Photo saved.'));
   });
 
   it('attaches a photo after adding supply', async () => {
@@ -295,6 +333,6 @@ describe('InventoryPage', () => {
         );
       expect(uploaded).toBe(true);
     });
-    expect(await screen.findByText('Stock added with photo.')).toBeInTheDocument();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Stock added with photo.'));
   });
 });

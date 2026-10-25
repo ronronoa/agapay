@@ -61,7 +61,7 @@ export const createItemTypeSchema = z
     ]),
     unit: z.string().trim().min(1).max(24),
     ...limits,
-    lowStockThreshold: limits.lowStockThreshold.default(20),
+    lowStockThreshold: limits.lowStockThreshold.optional(),
   })
   .strict();
 

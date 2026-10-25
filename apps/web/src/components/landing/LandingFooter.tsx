@@ -40,7 +40,7 @@ const FOOTER_LINKS = [
 export function LandingFooter() {
   return (
     <footer className="w-full bg-pine-dark text-white">
-      <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-12">
           <div className="space-y-6 lg:col-span-4">
             <div>
@@ -53,13 +53,13 @@ export function LandingFooter() {
             <div className="flex max-w-sm flex-wrap gap-3">
               <Link
                 to="/request-assistance"
-                className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-pine px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-pine px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Request assistance
               </Link>
               <Link
                 to="/track"
-                className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-white/30 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/30 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Track a request
               </Link>
@@ -90,7 +90,7 @@ export function LandingFooter() {
 
       {/* Bottom bar */}
       <div className="border-t border-white/10">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <p className="text-xs text-white/50">
             &copy; 2026 Agapay Community, Inc. All rights reserved.
           </p>

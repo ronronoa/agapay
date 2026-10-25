@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { createUserSchema, updateUserSchema, userListQuerySchema } from '@agapay/shared';
+import {
+  createUserSchema,
+  updateUserSchema,
+  userListQuerySchema,
+  userIdParamsSchema,
+} from '@agapay/shared';
 import { validationError } from '../../lib/errors.js';
 import { pathParam } from '../../lib/http/params.js';
 import { systemClock } from '../../lib/clock.js';
@@ -9,6 +14,13 @@ import * as service from './users.service.js';
 export const usersRouter = Router();
 
 usersRouter.use(requireAuth, requireRole('ADMIN'));
+usersRouter.post('/:id/invitation', async (req, res) => {
+  const parsed = userIdParamsSchema.safeParse(req.params);
+  if (!parsed.success) throw validationError(parsed.error.flatten());
+  const invitation = await service.resendInvitation(parsed.data.id, actorFrom(req), systemClock);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ data: invitation });
+});
 
 usersRouter.get('/', async (req, res) => {
   const raw: unknown = req.query;
@@ -23,8 +35,9 @@ usersRouter.post('/', async (req, res) => {
   const parsed = createUserSchema.safeParse(body);
   if (!parsed.success) throw validationError(parsed.error.flatten());
 
-  const user = await service.create(parsed.data, actorFrom(req), systemClock);
-  res.status(201).json({ data: user });
+  const result = await service.create(parsed.data, actorFrom(req), systemClock);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(201).json({ data: result.user, invitation: result.invitation });
 });
 
 usersRouter.patch('/:id', async (req, res) => {

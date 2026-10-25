@@ -103,7 +103,11 @@ describe('access tokens (SEC-02)', () => {
   it('round-trips the subject and role', async () => {
     const clock = new FixedClock(new Date('2026-01-01T00:00:00Z'));
     const token = await signAccessToken({ id: 'user-1', role: 'ADMIN' }, clock);
-    expect(await verifyAccessToken(token, clock)).toEqual({ userId: 'user-1', role: 'ADMIN' });
+    expect(await verifyAccessToken(token, clock)).toEqual({
+      userId: 'user-1',
+      role: 'ADMIN',
+      expiresAt: clock.now().getTime() + 900_000,
+    });
   });
 
   it('is rejected once it is past its 15 minute life', async () => {

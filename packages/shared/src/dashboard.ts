@@ -45,3 +45,70 @@ export const donorDashboardResponseSchema = z.object({
 });
 
 export type DonorDashboardResponse = z.infer<typeof donorDashboardResponseSchema>;
+
+const countSchema = z.number().int().nonnegative();
+const periodSchema = z.object({ from: z.string().datetime(), to: z.string().datetime() });
+const periodCountSchema = z.object({
+  total: countSchema,
+  thisMonth: countSchema,
+  lastMonth: countSchema,
+});
+export const adminDashboardResponseSchema = z.object({
+  data: z.object({
+    asOf: z.string().datetime(),
+    periods: z.object({
+      thisMonth: periodSchema,
+      lastMonth: periodSchema,
+      thisWeek: periodSchema,
+      lastWeek: periodSchema,
+    }),
+    needsAttention: z.object({
+      donationsAwaitingVerification: countSchema,
+      requestsAwaitingReview: countSchema,
+      distributionsToday: countSchema,
+      lowStockItems: countSchema,
+    }),
+    awaitingStock: countSchema,
+    donationActivity: z.object({
+      thisWeek: countSchema,
+      lastWeek: countSchema,
+      byWeekday: z.array(countSchema).length(7),
+    }),
+    goodsDistributed: z.object({
+      thisMonth: countSchema,
+      lastMonth: countSchema,
+      lastWeek: countSchema,
+    }),
+    beneficiariesServed: periodCountSchema,
+    verifiedDonations: periodCountSchema,
+    activeCampaigns: countSchema,
+    upcomingDistributions: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        campaignName: z.string(),
+        startAt: z.string().datetime(),
+        endAt: z.string().datetime(),
+      }),
+    ),
+    inventory: z.array(
+      z.object({
+        id: z.string(),
+        itemTypeName: z.string(),
+        campaignName: z.string(),
+        unit: z.string(),
+        available: countSchema,
+        lowStock: z.boolean(),
+      }),
+    ),
+    recentActivity: z.array(
+      z.object({
+        id: z.string(),
+        action: z.string(),
+        entityType: z.string(),
+        createdAt: z.string().datetime(),
+      }),
+    ),
+  }),
+});
+export type AdminDashboardResponse = z.infer<typeof adminDashboardResponseSchema>;

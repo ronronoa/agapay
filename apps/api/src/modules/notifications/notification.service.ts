@@ -1,10 +1,10 @@
+import { get as getSettings } from '../settings/settings.service.js';
 import type { EmailNotification, Prisma } from '@prisma/client';
 import type { EmailDto, EmailListQuery } from '@agapay/shared';
 import type { AuthContext } from '../../types/express.js';
 import { prisma } from '../../lib/prisma.js';
 import { systemClock, type Clock } from '../../lib/clock.js';
 import { startOfUtcDay } from '../../lib/dates.js';
-import { env } from '../../lib/env.js';
 import { invalidTransition, notFound } from '../../lib/errors.js';
 import { write as writeAudit } from '../audit/audit.service.js';
 
@@ -37,15 +37,18 @@ export async function listEmails(query: EmailListQuery): Promise<{
     ...(query.status === undefined ? {} : { status: query.status }),
     ...(query.type === undefined ? {} : { type: query.type }),
   };
-  const [total, rows] = await Promise.all([
-    prisma.emailNotification.count({ where }),
-    prisma.emailNotification.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-  ]);
+  const [total, rows] = await prisma.$transaction(
+    [
+      prisma.emailNotification.count({ where }),
+      prisma.emailNotification.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ],
+    { isolationLevel: 'RepeatableRead' },
+  );
   return { items: rows.map(toDto), meta: { page, pageSize, total } };
 }
 
@@ -54,34 +57,56 @@ export async function retryEmail(
   actor: AuthContext,
   clock: Clock = systemClock,
 ): Promise<EmailDto> {
-  const updated = await prisma.emailNotification.updateMany({
-    where: { id, status: 'FAILED' },
-    data: { status: 'QUEUED', attempts: 0, scheduledFor: clock.now(), lastError: null },
-  });
-  if (updated.count === 0) {
-    const existing = await prisma.emailNotification.findUnique({
-      where: { id },
-      select: { status: true },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.emailNotification.updateMany({
+      where: { id, status: 'FAILED' },
+      data: { status: 'QUEUED', attempts: 0, scheduledFor: clock.now(), lastError: null },
     });
-    if (existing === null) throw notFound('Email notification');
-    throw invalidTransition(existing.status, 'QUEUED');
-  }
-  const row = await prisma.emailNotification.findUnique({ where: { id } });
-  if (row === null) throw notFound('Email notification');
-  await writeAudit(prisma, actor, {
-    action: 'notification.retry',
-    entityType: 'EmailNotification',
-    entityId: id,
+    if (updated.count === 0) {
+      const existing = await tx.emailNotification.findUnique({
+        where: { id },
+        select: { status: true },
+      });
+      if (existing === null) throw notFound('Email notification');
+      throw invalidTransition(existing.status, 'QUEUED');
+    }
+    const row = await tx.emailNotification.findUnique({ where: { id } });
+    if (row === null) throw notFound('Email notification');
+    await writeAudit(tx, actor, {
+      action: 'notification.retry',
+      entityType: 'EmailNotification',
+      entityId: id,
+    });
+    return toDto(row);
   });
-  return toDto(row);
 }
 
-export async function emailUsage(
-  clock: Clock = systemClock,
-): Promise<{ sentToday: number; limit: number; remaining: number }> {
-  const sentToday = await prisma.emailNotification.count({
-    where: { status: 'SENT', sentAt: { gte: startOfUtcDay(clock.now()) } },
-  });
-  const limit = env.EMAIL_DAILY_LIMIT;
-  return { sentToday, limit, remaining: Math.max(0, limit - sentToday) };
+export async function emailUsage(clock: Clock = systemClock): Promise<{
+  sentToday: number;
+  limit: number;
+  remaining: number;
+  sentThisHour: number;
+  hourlyLimit: number;
+  remainingThisHour: number;
+}> {
+  const now = clock.now();
+  const [sentToday, sentThisHour] = await Promise.all([
+    prisma.emailNotification.count({
+      where: { status: 'SENT', sentAt: { gte: startOfUtcDay(now) } },
+    }),
+    prisma.emailNotification.count({
+      where: { status: 'SENT', sentAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) } },
+    }),
+  ]);
+  const settings = await getSettings();
+  const limit = settings.emailDailyLimit;
+  const hourlyLimit = settings.emailHourlyLimit;
+  return {
+    sentToday,
+    limit,
+    remaining: Math.max(0, limit - sentToday),
+    sentThisHour,
+    hourlyLimit,
+    remainingThisHour: Math.max(0, hourlyLimit - sentThisHour),
+  };
 }

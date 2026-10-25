@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { campaignListResponseSchema, donationResponseSchema } from '@agapay/shared';
@@ -14,7 +15,6 @@ export function DonatePage() {
   const [params] = useSearchParams();
   const [reference, setReference] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [resent, setResent] = useState(false);
 
   const campaignsQuery = useApiQuery(
     ['donor-campaigns'],
@@ -34,9 +34,10 @@ export function DonatePage() {
       .catch((err: unknown) => {
         if (err instanceof ApiClientError && err.code === 'EMAIL_NOT_VERIFIED') {
           setSubmitError('Confirm your email before donating. A fresh link is one tap away.');
+          toast.error('Confirm your email before donating. A fresh link is one tap away.');
           return;
         }
-        setSubmitError(
+        toast.error(
           err instanceof ApiClientError ? err.message : 'Submission failed. Please try again.',
         );
       });
@@ -46,8 +47,8 @@ export function DonatePage() {
     const email = getUser()?.email;
     if (email === undefined || email.length === 0) return;
     void resendVerification(email)
-      .then(() => setResent(true))
-      .catch(() => setResent(false));
+      .then(() => toast.success('Link sent. Check your inbox.'))
+      .catch(() => toast.error('Could not send the confirmation email. Please try again.'));
   }
 
   return (
@@ -86,7 +87,6 @@ export function DonatePage() {
                 submitLabel="Submit donation"
                 pendingLabel="Submitting…"
                 onSubmit={onSubmit}
-                submitError={submitError}
               />
             )}
           </AsyncBoundary>
@@ -99,11 +99,6 @@ export function DonatePage() {
               >
                 Resend confirmation email
               </button>
-              {resent ? (
-                <p role="status" className="mt-1 text-sm text-text-muted">
-                  Link sent. Check your inbox.
-                </p>
-              ) : null}
             </div>
           ) : null}
         </div>

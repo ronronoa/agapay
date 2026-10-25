@@ -1,9 +1,15 @@
+import { toast } from 'sonner';
+import { useState } from 'react';
 import { CampaignStatus, campaignListResponseSchema, type CampaignDto } from '@agapay/shared';
 import { useApiQuery } from '../../lib/use-api-query';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { AsyncBoundary } from '../../components/ui/AsyncBoundary';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { CreateCampaignDialog } from './CreateCampaignDialog';
+import { ApiClientError, apiFetch } from '../../lib/api-client';
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Draft',
@@ -22,6 +28,25 @@ export function CampaignsPage() {
     '/api/v1/campaigns?pageSize=100',
     campaignListResponseSchema,
   );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [activating, setActivating] = useState<CampaignDto | null>(null);
+
+  function activate(campaign: CampaignDto): void {
+    void apiFetch(`/api/v1/campaigns/${encodeURIComponent(campaign.id)}/activate`, {
+      method: 'POST',
+    })
+      .then(() => {
+        toast.success(`Campaign "${campaign.name}" is now active.`);
+        setActivating(null);
+        query.refetch();
+      })
+      .catch((err: unknown) => {
+        setActivating(null);
+        toast.error(
+          err instanceof ApiClientError ? err.message : 'Activation failed. Please try again.',
+        );
+      });
+  }
 
   const columns: Column<CampaignDto>[] = [
     {
@@ -64,6 +89,22 @@ export function CampaignsPage() {
       render: (row) => (row.priorityItems.length === 0 ? '—' : String(row.priorityItems.length)),
     },
     { key: 'requests', header: 'Requests', render: (row) => String(row.requestCount) },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (row) =>
+        row.status === CampaignStatus.DRAFT && !row.isSystem ? (
+          <button
+            type="button"
+            onClick={() => setActivating(row)}
+            className="font-medium text-primary underline underline-offset-4"
+          >
+            Activate
+          </button>
+        ) : (
+          <span className="text-text-muted">—</span>
+        ),
+    },
   ];
 
   return (
@@ -71,6 +112,11 @@ export function CampaignsPage() {
       <PageHeader
         title="Campaigns"
         description="Relief campaigns and their covered areas and priority goods."
+        actions={
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            Add Campaign
+          </Button>
+        }
       />
 
       <AsyncBoundary
@@ -81,7 +127,12 @@ export function CampaignsPage() {
         loadingLabel="Loading campaigns…"
         isEmpty={(items) => items.length === 0}
         emptyTitle="No campaigns yet"
-        emptyDescription="Create a campaign to start accepting donations and assistance requests."
+        emptyDescription="Add a campaign to start accepting donations and assistance requests."
+        emptyAction={
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            Add Campaign
+          </Button>
+        }
       >
         {(items) => (
           <DataTable
@@ -92,6 +143,30 @@ export function CampaignsPage() {
           />
         )}
       </AsyncBoundary>
+
+      <CreateCampaignDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => {
+          query.refetch();
+        }}
+      />
+
+      <ConfirmDialog
+        open={activating !== null}
+        title="Activate this campaign?"
+        description={
+          activating === null
+            ? ''
+            : `"${activating.name}" will start accepting donations and assistance requests.`
+        }
+        confirmLabel="Yes, activate"
+        cancelLabel="Cancel"
+        onCancel={() => setActivating(null)}
+        onConfirm={() => {
+          if (activating !== null) activate(activating);
+        }}
+      />
     </div>
   );
 }

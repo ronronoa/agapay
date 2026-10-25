@@ -80,13 +80,13 @@ describe('RegisterPage', () => {
 });
 
 describe('LoginPage', () => {
-  it('routes the beneficiary toggle at the assistance form, not a login', () => {
+  it('links assistance and account recovery from the login page', () => {
     renderWith(<LoginPage />);
-    expect(screen.getByRole('link', { name: 'Beneficiary' })).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: /request assistance/i })[0]).toHaveAttribute(
       'href',
       '/request-assistance',
     );
-    expect(screen.getByRole('link', { name: 'Forgot Password?' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /forgot password\?/i })).toHaveAttribute(
       'href',
       '/forgot-password',
     );
@@ -98,7 +98,7 @@ describe('LoginPage', () => {
       new ApiClientError('UNAUTHENTICATED', 'Wrong email or password.', 401, 'req-1', undefined),
     );
     renderWith(<LoginPage />);
-    fireEvent.change(screen.getByLabelText('Email Address'), {
+    fireEvent.change(screen.getByLabelText(/email address/i), {
       target: { value: 'juan@example.com' },
     });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong-password-1' } });

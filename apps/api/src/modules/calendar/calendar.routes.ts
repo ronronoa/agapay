@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  eventActionSchema,
   calendarEventListQuerySchema,
   createCalendarEventSchema,
   updateCalendarEventSchema,
@@ -45,9 +46,21 @@ calendarRouter.patch('/events/:id', async (req, res) => {
 });
 
 calendarRouter.post('/events/:id/cancel', async (req, res) => {
-  res.status(200).json({ data: await service.cancel(pathParam(req, 'id'), actorFrom(req)) });
+  const input = eventActionSchema.safeParse(req.body);
+  if (!input.success) throw validationError(input.error.flatten());
+  res.status(200).json({
+    data: await service.cancel(pathParam(req, 'id'), actorFrom(req), input.data.revision),
+  });
 });
 
 calendarRouter.post('/events/:id/resync', async (req, res) => {
   res.status(200).json({ data: await service.resync(pathParam(req, 'id')) });
+});
+
+calendarRouter.post('/events/:id/complete', async (req, res) => {
+  const input = eventActionSchema.safeParse(req.body);
+  if (!input.success) throw validationError(input.error.flatten());
+  res.status(200).json({
+    data: await service.complete(pathParam(req, 'id'), input.data.revision, actorFrom(req)),
+  });
 });

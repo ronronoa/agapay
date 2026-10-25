@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import type { UserRole as UserRoleType } from '@agapay/shared';
 import { getUser, subscribe } from '../../lib/session';
 import { restoreSession } from '../../lib/auth-api';
+import { ErrorState } from '../ui/ErrorState';
 
 interface AuthGateProps {
   children: ReactNode;
@@ -15,14 +16,20 @@ export function AuthGate({ children, roles }: AuthGateProps) {
   const location = useLocation();
   const [user, setUser] = useState(getUser());
   const [checking, setChecking] = useState(user === null);
+  const [error, setError] = useState(false);
 
   useEffect(() => subscribe(() => setUser(getUser())), []);
 
   const refresh = useCallback(async () => {
     setChecking(true);
-    const restored = await restoreSession();
-    setUser(restored);
-    setChecking(false);
+    setError(false);
+    try {
+      setUser(await restoreSession());
+    } catch {
+      setError(true);
+    } finally {
+      setChecking(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -36,6 +43,14 @@ export function AuthGate({ children, roles }: AuthGateProps) {
       </p>
     );
   }
+
+  if (error)
+    return (
+      <ErrorState
+        message="Could not check your session. Check your connection and try again."
+        onRetry={() => void refresh()}
+      />
+    );
 
   if (user === null) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;

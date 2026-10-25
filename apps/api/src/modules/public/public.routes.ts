@@ -1,6 +1,6 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
-import { CampaignStatus, ErrorCode, ERROR_STATUS } from '@agapay/shared';
+import { CampaignStatus } from '@agapay/shared';
 import {
   publicCampaignListQuerySchema,
   publicItemTypeListQuerySchema,
@@ -10,7 +10,7 @@ import {
   type PublicCampaignDto,
 } from '@agapay/shared';
 import type { CampaignDto } from '@agapay/shared';
-import { getRequestId } from '../../lib/http/request-context.js';
+import { rateLimitHandler } from '../../lib/http/rate-limit.js';
 import { pathParam } from '../../lib/http/params.js';
 import { systemClock } from '../../lib/clock.js';
 import { notFound, validationError } from '../../lib/errors.js';
@@ -23,23 +23,12 @@ import { stats } from './public.service.js';
 
 export const publicRouter = Router();
 
-const limiterHandler = (_req: Request, res: Response): void => {
-  res.setHeader('Retry-After', '900');
-  res.status(ERROR_STATUS.RATE_LIMITED).json({
-    error: {
-      code: ErrorCode.RATE_LIMITED,
-      message: 'Too many requests. Please try again later.',
-      requestId: getRequestId() ?? 'unknown',
-    },
-  });
-};
-
 const submitPerIp = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 5,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  handler: limiterHandler,
+  handler: rateLimitHandler,
 });
 
 const submitPerEmail = rateLimit({
@@ -47,12 +36,12 @@ const submitPerEmail = rateLimit({
   limit: 3,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  handler: limiterHandler,
+  handler: rateLimitHandler,
   keyGenerator: (req: Request): string => {
     const body: unknown = req.body;
     if (typeof body !== 'object' || body === null) return 'no-email';
     const email = (body as { email?: unknown }).email;
-    return typeof email === 'string' ? hashToken(email.toLowerCase()) : 'no-email';
+    return typeof email === 'string' ? hashToken(email.trim().toLowerCase()) : 'no-email';
   },
 });
 
@@ -61,7 +50,7 @@ const trackPerIp = rateLimit({
   limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  handler: limiterHandler,
+  handler: rateLimitHandler,
 });
 
 const trackPerCode = rateLimit({
@@ -69,7 +58,7 @@ const trackPerCode = rateLimit({
   limit: 5,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  handler: limiterHandler,
+  handler: rateLimitHandler,
   keyGenerator: (req: Request): string => {
     const body: unknown = req.body;
     if (typeof body !== 'object' || body === null) return 'no-code';

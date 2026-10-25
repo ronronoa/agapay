@@ -25,13 +25,13 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 
     const user = await prisma.user.findUnique({
       where: { id: claims.userId },
-      select: { isActive: true },
+      select: { isActive: true, role: true },
     });
     if (user === null || !user.isActive) {
       throw unauthenticated('This account is no longer active.');
     }
 
-    req.auth = { userId: claims.userId, role: claims.role };
+    req.auth = { userId: claims.userId, role: user.role };
     next();
   } catch (err) {
     next(err);

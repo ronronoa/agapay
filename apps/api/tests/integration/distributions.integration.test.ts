@@ -350,6 +350,11 @@ describe('M4 distributions and calendar', () => {
     const eventId = await makeEvent('DISTRIBUTION', `M4 Noshow ${RUN}`);
     const created = parse(await allocate(requestId, eventId), distributionResponseSchema).data;
     const before = await stockOf(foodTypeId);
+    expect((await staffPost(`/api/v1/distributions/${created.id}/no-show`, {})).status).toBe(422);
+    await prisma.calendarEvent.update({
+      where: { id: eventId },
+      data: { endAt: new Date(Date.now() - 1000), startAt: new Date(Date.now() - 3600000) },
+    });
     const noShow = await staffPost(`/api/v1/distributions/${created.id}/no-show`, {});
     expect(noShow.status).toBe(200);
     const after = await stockOf(foodTypeId);
@@ -357,7 +362,10 @@ describe('M4 distributions and calendar', () => {
     expect(after.reserved).toBe(before.reserved - 5);
 
     const requestId2 = await approvedRequest();
-    const created2 = parse(await allocate(requestId2, eventId), distributionResponseSchema).data;
+    const created2 = parse(
+      await allocate(requestId2, await makeEvent('DISTRIBUTION', `M4 Cancel ${RUN}`)),
+      distributionResponseSchema,
+    ).data;
     const cancelled = await staffPost(`/api/v1/distributions/${created2.id}/cancel`, {});
     expect(cancelled.status).toBe(200);
     expect(parse(cancelled, distributionResponseSchema).data.status).toBe(
@@ -376,7 +384,13 @@ describe('M4 distributions and calendar', () => {
     expect((await allocate(requestA, eventId)).status).toBe(201);
     expect((await allocate(requestB, eventId)).status).toBe(201);
 
-    const cancelled = await staffPost(`/api/v1/calendar/events/${eventId}/cancel`, {});
+    const current = parse(
+      await staffGet(`/api/v1/calendar/events/${eventId}`),
+      calendarEventResponseSchema,
+    ).data;
+    const cancelled = await staffPost(`/api/v1/calendar/events/${eventId}/cancel`, {
+      revision: current.revision,
+    });
     expect(cancelled.status).toBe(200);
     for (const requestId of [requestA, requestB]) {
       const row = await prisma.assistanceRequest.findUniqueOrThrow({
@@ -427,7 +441,7 @@ describe('M4 distributions and calendar', () => {
     const wrongType = await staffPost(`/api/v1/donations/${donationId}/schedule`, {
       calendarEventId: distributionId,
     });
-    expect(wrongType.status).toBe(409);
+    expect(wrongType.status).toBe(422);
 
     const cancelled = await staffPost(`/api/v1/donations/${donationId}/cancel`, {});
     expect(cancelled.status).toBe(200);
@@ -494,8 +508,7 @@ describe('M4 distributions and calendar', () => {
 
     const eventId = await makeEvent('DISTRIBUTION', `M4 Sync ${RUN}`);
     const resync = await staffPost(`/api/v1/calendar/events/${eventId}/resync`, {});
-    expect(resync.status).toBe(200);
-    expect(parse(resync, calendarEventResponseSchema).data.syncStatus).toBe('NOT_SYNCED');
+    expect(resync.status).toBe(422);
 
     const listed = parse(
       await staffGet('/api/v1/distributions'),
@@ -507,5 +520,273 @@ describe('M4 distributions and calendar', () => {
       calendarEventListResponseSchema,
     ).data;
     expect(events.total).toBeGreaterThanOrEqual(1);
+  });
+});
+
+async function eventRevision(id: string): Promise<number> {
+  return parse(await staffGet(`/api/v1/calendar/events/${id}`), calendarEventResponseSchema).data
+    .revision;
+}
+async function patchEvent(id: string, body: object): Promise<request.Response> {
+  return request(app)
+    .patch(`/api/v1/calendar/events/${id}`)
+    .set(auth(staff.token))
+    .set('X-Forwarded-For', uniqueIp())
+    .send(body);
+}
+
+describe('M4 scheduling safeguards', () => {
+  it('allows exactly one concurrent allocation to the last slot', async () => {
+    const event = await makeEvent('DISTRIBUTION', `Capacity ${RUN}`);
+    expect(
+      (await patchEvent(event, { revision: await eventRevision(event), capacity: 1 })).status,
+    ).toBe(200);
+    const a = await approvedRequest();
+    const b = await approvedRequest();
+    const results = await Promise.all([allocate(a, event), allocate(b, event)]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    const revision = await eventRevision(event);
+    expect((await patchEvent(event, { revision, capacity: 0 })).status).toBe(400);
+    const summary = parse(
+      await staffGet(`/api/v1/calendar/events/${event}`),
+      calendarEventResponseSchema,
+    ).data;
+    expect(summary.occupied).toBe(1);
+  });
+  it('rejects stale event edits and includes cross-month events', async () => {
+    const event = await makeEvent('DISTRIBUTION', `Overlap ${RUN}`);
+    const revision = await eventRevision(event);
+    expect(
+      (
+        await patchEvent(event, {
+          revision,
+          startAt: '2026-10-31T12:00:00Z',
+          endAt: '2026-11-02T00:00:00Z',
+        })
+      ).status,
+    ).toBe(200);
+    expect((await patchEvent(event, { revision, title: 'Stale title' })).status).toBe(409);
+    const rows = parse(
+      await staffGet(
+        '/api/v1/calendar/events?from=2026-11-01T00:00:00Z&to=2026-11-01T23:00:00Z&pageSize=100',
+      ),
+      calendarEventListResponseSchema,
+    ).data.items;
+    expect(rows.some((e) => e.id === event)).toBe(true);
+  });
+  it('rejects duplicate goods and incomplete or empty handovers without changing stock', async () => {
+    const id = await approvedRequest();
+    const event = await makeEvent('DISTRIBUTION', `Validation ${RUN}`);
+    const duplicate = await staffPost('/api/v1/distributions', {
+      requestId: id,
+      calendarEventId: event,
+      items: [
+        { itemTypeId: hygieneTypeId, quantity: 1 },
+        { itemTypeId: hygieneTypeId, quantity: 1 },
+      ],
+    });
+    expect(duplicate.status).toBe(422);
+    const dist = parse(await allocate(id, event), distributionResponseSchema).data;
+    const first = dist.items[0];
+    if (!first) throw new Error('Missing item');
+    const before = await stockOf(foodTypeId);
+    for (const items of [
+      [{ distributionItemId: first.id, quantity: 1 }],
+      dist.items.map((i) => ({ distributionItemId: i.id, quantity: 0 })),
+      [
+        { distributionItemId: first.id, quantity: 1 },
+        { distributionItemId: first.id, quantity: 1 },
+      ],
+    ]) {
+      expect(
+        (
+          await staffPost(`/api/v1/distributions/${dist.id}/complete`, {
+            receivedByName: 'Test Recipient',
+            items,
+          })
+        ).status,
+      ).toBe(422);
+    }
+    expect(await stockOf(foodTypeId)).toEqual(before);
+    const completion = {
+      receivedByName: 'Test Recipient',
+      items: dist.items.map((i) => ({ distributionItemId: i.id, quantity: i.quantity })),
+    };
+    const results = await Promise.all([
+      staffPost(`/api/v1/distributions/${dist.id}/complete`, completion),
+      staffPost(`/api/v1/distributions/${dist.id}/complete`, completion),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    const row = await prisma.distribution.findUniqueOrThrow({ where: { id: dist.id } });
+    expect(row.distributedAt).not.toBeNull();
+    expect(row.recordedById).toBe(staff.id);
+  });
+  it('serializes cancellation against concurrent assignment', async () => {
+    const event = await makeEvent('DISTRIBUTION', `Cancel race ${RUN}`);
+    const id = await approvedRequest();
+    const revision = await eventRevision(event);
+    await Promise.all([
+      allocate(id, event),
+      staffPost(`/api/v1/calendar/events/${event}/cancel`, { revision }),
+    ]);
+    const e = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event } });
+    const live = await prisma.distribution.count({
+      where: { calendarEventId: event, status: 'SCHEDULED' },
+    });
+    if (e.status === 'CANCELLED') expect(live).toBe(0);
+    else expect(live).toBe(1);
+  });
+  it('preserves reservations and supersedes old email on rescheduling', async () => {
+    const event = await makeEvent('DISTRIBUTION', `Reschedule ${RUN}`);
+    const id = await approvedRequest();
+    const dist = parse(await allocate(id, event), distributionResponseSchema).data;
+    const before = await stockOf(foodTypeId);
+    const oldMail = await prisma.emailNotification.findFirstOrThrow({
+      where: { relatedRequestId: id, type: 'DISTRIBUTION_SCHEDULED' },
+    });
+    expect(
+      (
+        await patchEvent(event, {
+          revision: await eventRevision(event),
+          location: 'Updated relief hall',
+        })
+      ).status,
+    ).toBe(200);
+    expect(await stockOf(foodTypeId)).toEqual(before);
+    const updated = await prisma.distribution.findUniqueOrThrow({ where: { id: dist.id } });
+    expect(updated.scheduleRevision).toBe(2);
+    const { isScheduleCurrent } = await import('../../src/modules/notifications/schedule-email.js');
+    const { FixedClock } = await import('../../src/lib/clock.js');
+    expect(
+      await isScheduleCurrent(
+        oldMail.templateData,
+        new FixedClock(new Date('2026-10-21T00:00:00Z')),
+      ),
+    ).toBe(false);
+    expect(
+      (await patchEvent(event, { revision: await eventRevision(event), capacity: 1 })).status,
+    ).toBe(200);
+  });
+  it('unschedules collection donations on event cancellation and supports reassignment', async () => {
+    const event = await makeEvent('COLLECTION', `Collection one ${RUN}`);
+    const target = await makeEvent('COLLECTION', `Collection two ${RUN}`);
+    const donation = await prisma.donation.create({
+      data: {
+        donorId: donor.id,
+        campaignId,
+        status: 'VERIFIED',
+        referenceNumber: `DON-M4-${RUN}-${seq++}`,
+      },
+    });
+    expect(
+      (await staffPost(`/api/v1/donations/${donation.id}/schedule`, { calendarEventId: event }))
+        .status,
+    ).toBe(200);
+    expect(
+      (await staffPost(`/api/v1/donations/${donation.id}/schedule`, { calendarEventId: target }))
+        .status,
+    ).toBe(200);
+    expect((await staffPost(`/api/v1/donations/${donation.id}/unschedule`, {})).status).toBe(200);
+    expect(
+      (await staffPost(`/api/v1/donations/${donation.id}/schedule`, { calendarEventId: event }))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await staffPost(`/api/v1/calendar/events/${event}/cancel`, {
+          revision: await eventRevision(event),
+        })
+      ).status,
+    ).toBe(200);
+    const after = await prisma.donation.findUniqueOrThrow({ where: { id: donation.id } });
+    expect(after.status).toBe('VERIFIED');
+    expect(after.collectionEventId).toBeNull();
+  });
+  it('blocks closure until the event ends and assignments are resolved', async () => {
+    const event = await makeEvent('DISTRIBUTION', `Close ${RUN}`);
+    const id = await approvedRequest();
+    const dist = parse(await allocate(id, event), distributionResponseSchema).data;
+    expect(
+      (
+        await staffPost(`/api/v1/calendar/events/${event}/complete`, {
+          revision: await eventRevision(event),
+        })
+      ).status,
+    ).toBe(422);
+    await prisma.calendarEvent.update({
+      where: { id: event },
+      data: { startAt: new Date(Date.now() - 7200000), endAt: new Date(Date.now() - 3600000) },
+    });
+    expect(
+      (
+        await staffPost(`/api/v1/calendar/events/${event}/complete`, {
+          revision: await eventRevision(event),
+        })
+      ).status,
+    ).toBe(422);
+    expect((await staffPost(`/api/v1/distributions/${dist.id}/no-show`, {})).status).toBe(200);
+    expect(
+      (
+        await staffPost(`/api/v1/calendar/events/${event}/complete`, {
+          revision: await eventRevision(event),
+        })
+      ).status,
+    ).toBe(200);
+  });
+  it('queues one reminder per revision, skips short-notice schedules, and retries Google failures', async () => {
+    const { FixedClock } = await import('../../src/lib/clock.js');
+    const { scanReminders } = await import('../../src/jobs/reminders.js');
+    const { syncCalendars, googleEventId } = await import('../../src/jobs/calendar-sync.js');
+    const event = await makeEvent('DISTRIBUTION', `Reminder ${RUN}`);
+    const id = await approvedRequest();
+    const dist = parse(await allocate(id, event), distributionResponseSchema).data;
+    const clock = new FixedClock(new Date('2026-10-31T12:00:00Z'));
+    await prisma.distribution.update({
+      where: { id: dist.id },
+      data: { scheduleNotifiedAt: new Date('2026-10-30T00:00:00Z') },
+    });
+    await scanReminders(clock);
+    await scanReminders(clock);
+    expect(
+      await prisma.emailNotification.count({
+        where: { relatedRequestId: id, type: 'DISTRIBUTION_REMINDER' },
+      }),
+    ).toBe(1);
+    await prisma.distribution.update({
+      where: { id: dist.id },
+      data: {
+        scheduleRevision: { increment: 1 },
+        scheduleNotifiedAt: clock.now(),
+        reminderSentAt: null,
+      },
+    });
+    await scanReminders(clock);
+    expect(
+      await prisma.emailNotification.count({
+        where: { relatedRequestId: id, type: 'DISTRIBUTION_REMINDER' },
+      }),
+    ).toBe(1);
+    const ids: string[] = [];
+    await syncCalendars({
+      enabled: true,
+      clock,
+      eventId: event,
+      mirror: { upsert: () => Promise.reject(new Error('Offline')) },
+    });
+    expect(
+      (await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event } })).syncStatus,
+    ).toBe('FAILED');
+    clock.advance(60000);
+    const mirror = {
+      upsert: (e: { id: string }) => {
+        ids.push(googleEventId(e.id));
+        return Promise.resolve(googleEventId(e.id));
+      },
+    };
+    await syncCalendars({ enabled: true, clock, eventId: event, mirror });
+    expect(ids).toEqual([googleEventId(event)]);
+    expect(
+      (await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event } })).syncStatus,
+    ).toBe('SYNCED');
   });
 });

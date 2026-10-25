@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -6,6 +7,10 @@ import type * as ApiClientModule from '../../lib/api-client';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { DonorDonationDetailPage } from './DonorDonationDetailPage';
 import { apiFetch, ApiClientError } from '../../lib/api-client';
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 
 vi.mock('../../lib/api-client', async () => {
   const actual = await vi.importActual<typeof ApiClientModule>('../../lib/api-client');
@@ -120,7 +125,7 @@ describe('DonorDonationDetailPage actions', () => {
       expect(screen.getByRole('checkbox', { name: /Food Packs/ })).toBeInTheDocument(),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(screen.getByText('Donation updated.')).toBeInTheDocument());
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Donation updated.'));
     const patch = vi
       .mocked(apiFetch)
       .mock.calls.find(
@@ -137,7 +142,7 @@ describe('DonorDonationDetailPage actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel donation' }));
     await waitFor(() => expect(screen.getByText('Cancel this donation?')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Yes, cancel it' }));
-    await waitFor(() => expect(screen.getByText('Donation cancelled.')).toBeInTheDocument());
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Donation cancelled.'));
   });
 
   it('hides edit and cancel once staff takes over', async () => {
@@ -185,6 +190,6 @@ describe('DonorDonationDetailPage actions', () => {
     await waitFor(() => expect(screen.getByText('DON-2026-000182')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Cancel donation' }));
     fireEvent.click(screen.getByRole('button', { name: 'Yes, cancel it' }));
-    await waitFor(() => expect(screen.getByText('Too late to cancel.')).toBeInTheDocument());
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Too late to cancel.'));
   });
 });

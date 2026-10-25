@@ -7,6 +7,7 @@ interface ParsedQuery<T> {
   data: T | null;
   error: string | null;
   isPending: boolean;
+  isFetching: boolean;
   refetch: () => void;
 }
 
@@ -33,31 +34,43 @@ export function useApiQuery<T>(
   });
 
   const refetch = (): void => {
-    void query.refetch();
+    void query.refetch({ cancelRefetch: false });
   };
 
   if (query.isPending) {
-    return { data: null, error: null, isPending: true, refetch };
+    return { data: null, error: null, isPending: true, isFetching: query.isFetching, refetch };
   }
 
+  const parsed = schema.safeParse(query.data);
   if (query.isError) {
+    const transient =
+      !(query.error instanceof ApiClientError) ||
+      query.error.status >= 500 ||
+      query.error.status === 429;
     return {
-      data: null,
+      data: parsed.success && transient ? parsed.data : null,
       error: query.error instanceof ApiClientError ? query.error.message : 'Request failed.',
       isPending: false,
+      isFetching: query.isFetching,
       refetch,
     };
   }
 
-  const parsed = schema.safeParse(query.data);
   if (!parsed.success) {
     return {
       data: null,
       error: 'The server response did not match the expected shape.',
       isPending: false,
+      isFetching: query.isFetching,
       refetch,
     };
   }
 
-  return { data: parsed.data, error: null, isPending: false, refetch };
+  return {
+    data: parsed.data,
+    error: null,
+    isPending: false,
+    isFetching: query.isFetching,
+    refetch,
+  };
 }

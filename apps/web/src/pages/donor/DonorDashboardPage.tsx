@@ -25,7 +25,10 @@ function greetingFor(hour: number): string {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-PH', { dateStyle: 'medium' });
+  return new Date(iso).toLocaleDateString('en-PH', {
+    timeZone: 'Asia/Manila',
+    dateStyle: 'medium',
+  });
 }
 
 function daysLeft(endDate: string | null): number | null {
@@ -66,7 +69,7 @@ export function DonorDashboardPage() {
   const user = useSyncExternalStore(subscribe, getUser, getUser);
   const firstName = (user?.name ?? 'Friend').split(' ')[0] ?? 'Friend';
   const query = useApiQuery(
-    ['donor-dashboard'],
+    ['donor-dashboard', user?.id],
     '/api/v1/dashboard/donor',
     donorDashboardResponseSchema,
   );
@@ -103,7 +106,16 @@ export function DonorDashboardPage() {
                   />
                   <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-text/80 to-transparent p-6">
                     <p className="text-sm text-white/90">
-                      {greetingFor(new Date().getHours())}, {firstName}!
+                      {greetingFor(
+                        Number(
+                          new Intl.DateTimeFormat('en-PH', {
+                            timeZone: 'Asia/Manila',
+                            hour: 'numeric',
+                            hourCycle: 'h23',
+                          }).format(new Date()),
+                        ),
+                      )}
+                      , {firstName}!
                     </p>
                     <p className="font-display text-2xl font-semibold text-white">
                       Your support brings hope.
@@ -119,7 +131,7 @@ export function DonorDashboardPage() {
                     Make a Donation
                   </h2>
                   <p className="mt-2 text-sm text-text-muted">
-                    Give relief goods or financial support to ongoing campaigns.
+                    Give relief goods to ongoing campaigns.
                   </p>
                   <Link
                     to="/donor/campaign"

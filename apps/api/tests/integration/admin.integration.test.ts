@@ -10,6 +10,8 @@ import {
   itemTypeListResponseSchema,
   userListResponseSchema,
   adminUserResponseSchema,
+  createUserResponseSchema,
+  personnelInvitationResponseSchema,
   itemTypeResponseSchema,
   campaignResponseSchema,
 } from '@agapay/shared';
@@ -476,5 +478,165 @@ describe('audit log (DB-19, DB-29)', () => {
     const serialised = JSON.stringify(res.body);
     expect(serialised).not.toContain('passwordHash');
     expect(serialised).not.toContain(PASSWORD);
+  });
+});
+
+describe('M5D personnel safeguards', () => {
+  it('activates invited personnel through a single-use password link', async () => {
+    const email = uniqueEmail();
+    const created = await request(app)
+      .post('/api/v1/users')
+      .set(as(admin))
+      .send({ name: 'Invited Personnel', email, role: 'STAFF' });
+    const id = userDetail(created).id;
+    const invitation = parse(created, createUserResponseSchema, 'create personnel').invitation;
+    expect(created.headers['cache-control']).toBe('no-store');
+    expect(new URL(invitation.url).pathname).toBe('/reset-password');
+    const mail = await prisma.emailNotification.findFirstOrThrow({ where: { toEmail: email } });
+    const data = mail.templateData;
+    if (
+      data === null ||
+      typeof data !== 'object' ||
+      Array.isArray(data) ||
+      typeof data.token !== 'string'
+    )
+      throw new Error('Invitation token missing');
+    const payload = { token: data.token, password: PASSWORD };
+    expect(new URL(invitation.url).searchParams.get('token')).toBe(data.token);
+    const list = await request(app).get('/api/v1/users').set(as(admin));
+    expect(JSON.stringify(list.body)).not.toContain(data.token);
+    expect(JSON.stringify(list.body)).not.toContain('invitation');
+    expect((await request(app).post('/api/v1/auth/reset-password').send(payload)).status).toBe(204);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id } })).emailVerifiedAt).not.toBeNull();
+    expect((await request(app).post('/api/v1/auth/reset-password').send(payload)).status).toBe(409);
+    const login = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD });
+    expect(login.status).toBe(200);
+    expect((await request(app).post(`/api/v1/users/${id}/invitation`).set(as(admin))).status).toBe(
+      422,
+    );
+  });
+
+  it('applies a demotion to an already-issued access token', async () => {
+    const otherAdmin = await makeActor(UserRole.ADMIN);
+    const response = await request(app)
+      .patch(`/api/v1/users/${otherAdmin.id}`)
+      .set(as(admin))
+      .send({ role: 'STAFF' });
+    expect(response.status).toBe(200);
+    expect((await request(app).get('/api/v1/users').set(as(otherAdmin))).status).toBe(403);
+  });
+
+  it('resends invitations once, invalidates earlier links, and excludes private audit values', async () => {
+    const email = uniqueEmail();
+    const created = await request(app)
+      .post('/api/v1/users')
+      .set(as(admin))
+      .send({ name: 'Private Personnel', email, role: 'STAFF' });
+    const id = userDetail(created).id;
+    const old = await prisma.authToken.findFirstOrThrow({ where: { userId: id } });
+    await prisma.authToken.update({
+      where: { id: old.id },
+      data: { createdAt: new Date(Date.now() - 120000) },
+    });
+    const replies = await Promise.all([
+      request(app).post(`/api/v1/users/${id}/invitation`).set(as(admin)),
+      request(app).post(`/api/v1/users/${id}/invitation`).set(as(admin)),
+    ]);
+    expect(replies.map((r) => r.status).sort()).toEqual([200, 409]);
+    const successful = replies.find((r) => r.status === 200);
+    if (!successful) throw new Error('Missing regenerated invitation');
+    expect(successful.headers['cache-control']).toBe('no-store');
+    const replacement = parse(
+      successful,
+      personnelInvitationResponseSchema,
+      'regenerate invitation',
+    ).data;
+    expect(new URL(replacement.url).pathname).toBe('/reset-password');
+    expect(
+      (await prisma.authToken.findUniqueOrThrow({ where: { id: old.id } })).usedAt,
+    ).not.toBeNull();
+    expect(await prisma.authToken.count({ where: { userId: id, usedAt: null } })).toBe(1);
+    expect(
+      await prisma.emailNotification.count({ where: { toEmail: email, status: 'QUEUED' } }),
+    ).toBe(1);
+    expect((await request(app).post(`/api/v1/users/${id}/invitation`).set(as(staff))).status).toBe(
+      403,
+    );
+    expect((await request(app).post(`/api/v1/users/${id}/invitation`).set(as(donor))).status).toBe(
+      403,
+    );
+    await request(app)
+      .patch(`/api/v1/users/${id}`)
+      .set(as(admin))
+      .send({ name: 'Changed Private Name' });
+    const logs = await prisma.auditLog.findMany({ where: { entityId: id } });
+    expect(JSON.stringify(logs.map((log) => log.metadata))).not.toContain('Private');
+    expect(JSON.stringify(logs.map((log) => log.metadata))).not.toContain(email);
+  });
+
+  it('keeps an active administrator during concurrent cross-demotions', async () => {
+    const first = await makeActor(UserRole.ADMIN);
+    const second = await makeActor(UserRole.ADMIN);
+    const others = await prisma.user.findMany({
+      where: { role: 'ADMIN', isActive: true, id: { notIn: [first.id, second.id] } },
+      select: { id: true },
+    });
+    await prisma.user.updateMany({
+      where: { id: { in: others.map((u) => u.id) } },
+      data: { isActive: false },
+    });
+    try {
+      const responses = await Promise.all([
+        request(app).patch(`/api/v1/users/${second.id}`).set(as(first)).send({ role: 'STAFF' }),
+        request(app).patch(`/api/v1/users/${first.id}`).set(as(second)).send({ role: 'STAFF' }),
+      ]);
+      expect(responses.filter((r) => r.status === 200)).toHaveLength(1);
+      expect(await prisma.user.count({ where: { role: 'ADMIN', isActive: true } })).toBe(1);
+    } finally {
+      await prisma.user.updateMany({
+        where: { id: { in: others.map((u) => u.id) } },
+        data: { isActive: true },
+      });
+    }
+  });
+});
+
+describe('M5D operational settings', () => {
+  it('restricts settings, rejects stale changes, and applies item defaults', async () => {
+    await prisma.operationalSettings.deleteMany();
+    try {
+      expect((await request(app).get('/api/v1/settings').set(as(staff))).status).toBe(403);
+      expect((await request(app).patch('/api/v1/settings').set(as(donor)).send({})).status).toBe(
+        403,
+      );
+      const settings = {
+        emailDailyLimit: 70,
+        emailHourlyLimit: 20,
+        lowStockDefault: 9,
+        retentionMonths: 18,
+        revision: 0,
+      };
+      const responses = await Promise.all([
+        request(app).patch('/api/v1/settings').set(as(admin)).send(settings),
+        request(app).patch('/api/v1/settings').set(as(admin)).send(settings),
+      ]);
+      expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
+      const item = await request(app)
+        .post('/api/v1/item-types')
+        .set(as(admin))
+        .send({ name: uniqueName('Default stock'), category: 'FOOD', unit: 'pack' });
+      expect(item.status).toBe(201);
+      expect(itemDetailResponse(item).lowStockThreshold).toBe(9);
+      expect(
+        (
+          await request(app)
+            .patch('/api/v1/settings')
+            .set(as(admin))
+            .send({ ...settings, revision: 1, retentionMonths: 0 })
+        ).status,
+      ).toBe(400);
+    } finally {
+      await prisma.operationalSettings.deleteMany();
+    }
   });
 });

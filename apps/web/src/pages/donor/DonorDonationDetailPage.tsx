@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { campaignListResponseSchema, donationResponseSchema } from '@agapay/shared';
@@ -26,8 +27,6 @@ export function DonorDonationDetailPage() {
   const { id } = useParams();
   const [editing, setEditing] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const query = useApiQuery(
     ['donor-donation', id],
     `/api/v1/donations/${encodeURIComponent(id ?? '')}`,
@@ -42,34 +41,32 @@ export function DonorDonationDetailPage() {
   );
 
   function onEdit(input: SubmitDonationInput): Promise<void> {
-    setActionError(null);
     return apiFetch(`/api/v1/donations/${encodeURIComponent(id ?? '')}`, {
       method: 'PATCH',
       body: input,
     })
       .then(() => {
         setEditing(false);
-        setActionMessage('Donation updated.');
+        toast.success('Donation updated.');
         query.refetch();
       })
       .catch((err: unknown) => {
-        setActionError(
+        toast.error(
           err instanceof ApiClientError ? err.message : 'Update failed. Please try again.',
         );
       });
   }
 
   function onCancel(): void {
-    setActionError(null);
     void apiFetch(`/api/v1/donations/${encodeURIComponent(id ?? '')}/cancel`, { method: 'POST' })
       .then(() => {
         setConfirmingCancel(false);
-        setActionMessage('Donation cancelled.');
+        toast.success('Donation cancelled.');
         query.refetch();
       })
       .catch((err: unknown) => {
         setConfirmingCancel(false);
-        setActionError(
+        toast.error(
           err instanceof ApiClientError ? err.message : 'Cancel failed. Please try again.',
         );
       });
@@ -96,17 +93,6 @@ export function DonorDonationDetailPage() {
             <p>
               <StatusBadge label={donation.status.replace(/_/g, ' ')} />
             </p>
-
-            {actionMessage === null ? null : (
-              <p role="status" className="text-sm font-medium">
-                {actionMessage}
-              </p>
-            )}
-            {actionError === null ? null : (
-              <p role="alert" className="text-sm font-medium">
-                {actionError}
-              </p>
-            )}
 
             {donation.status === 'PENDING' && !editing ? (
               <div className="flex flex-wrap gap-3">
@@ -141,7 +127,6 @@ export function DonorDonationDetailPage() {
                   submitLabel="Save changes"
                   pendingLabel="Saving…"
                   onSubmit={onEdit}
-                  submitError={null}
                 />
                 <Button
                   type="button"

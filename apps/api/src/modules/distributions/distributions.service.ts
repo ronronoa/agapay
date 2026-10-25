@@ -1,4 +1,13 @@
 import {
+  lockEvents,
+  requireEvent,
+  requireCapacity,
+  queueSchedule,
+  touchAssignments,
+} from '../calendar/scheduling.js';
+import { lockDistribution } from '../calendar/assignment-locks.js';
+import { systemClock, type Clock } from '../../lib/clock.js';
+import {
   DistributionStatus,
   NotificationType,
   RequestStatus,
@@ -54,6 +63,8 @@ type DetailRow = {
   requestId: string;
   calendarEventId: string;
   receivedByName: string | null;
+  distributedAt: Date | null;
+  recordedById: string | null;
   notes: string | null;
   createdAt: Date;
   request: { referenceNumber: string };
@@ -75,6 +86,8 @@ function toDto(row: DetailRow): DistributionDto {
     calendarEventId: row.calendarEventId,
     eventTitle: row.calendarEvent.title,
     receivedByName: row.receivedByName,
+    distributedAt: row.distributedAt?.toISOString() ?? null,
+    recordedById: row.recordedById,
     notes: row.notes,
     items: row.items.map((item) => ({
       id: item.id,
@@ -105,36 +118,6 @@ async function flipRequestTo(
   if (claimed.count === 0) throw invalidTransition(RequestStatus.SCHEDULED, to);
 }
 
-async function mailCancelled(
-  tx: Prisma.TransactionClient,
-  requestId: string,
-  distributionId: string,
-): Promise<void> {
-  const row = await tx.assistanceRequest.findUniqueOrThrow({
-    where: { id: requestId },
-    select: { fullName: true, email: true },
-  });
-  const dist = await tx.distribution.findUniqueOrThrow({
-    where: { id: distributionId },
-    select: { calendarEvent: { select: { location: true, startAt: true } } },
-  });
-  await tx.emailNotification.create({
-    data: {
-      type: NotificationType.DISTRIBUTION_CANCELLED,
-      toEmail: row.email,
-      subject: 'Your distribution schedule was cancelled',
-      templateData: {
-        name: row.fullName,
-        location: dist.calendarEvent.location,
-        startAt: dist.calendarEvent.startAt.toISOString(),
-      },
-      priority: 1,
-      relatedRequestId: requestId,
-      dedupeKey: `distribution-cancelled:${distributionId}`,
-    },
-  });
-}
-
 export async function create(
   input: CreateDistributionInput,
   actor: AuthContext,
@@ -162,6 +145,11 @@ export async function create(
   try {
     const id = await withRetry(() =>
       prisma.$transaction(async (tx) => {
+        await lockEvents(tx, [event.id]);
+        await requireEvent(tx, event.id, 'DISTRIBUTION', request.campaignId);
+        await requireCapacity(tx, event.id);
+        if (new Set(input.items.map((i) => i.itemTypeId)).size !== input.items.length)
+          throw businessRuleViolation('Duplicate goods are not allowed.');
         const claimed = await tx.assistanceRequest.updateMany({
           where: { id: request.id, status: RequestStatus.APPROVED },
           data: { status: RequestStatus.SCHEDULED },
@@ -205,29 +193,8 @@ export async function create(
             throw err;
           }
         }
-        const fullEvent = await tx.calendarEvent.findUniqueOrThrow({
-          where: { id: event.id },
-          select: { location: true, startAt: true },
-        });
-        const beneficiary = await tx.assistanceRequest.findUniqueOrThrow({
-          where: { id: request.id },
-          select: { fullName: true, email: true },
-        });
-        await tx.emailNotification.create({
-          data: {
-            type: NotificationType.DISTRIBUTION_SCHEDULED,
-            toEmail: beneficiary.email,
-            subject: 'Your goods are ready for pickup',
-            templateData: {
-              name: beneficiary.fullName,
-              location: fullEvent.location,
-              startAt: fullEvent.startAt.toISOString(),
-            },
-            priority: 2,
-            relatedRequestId: request.id,
-            dedupeKey: `distribution-scheduled:${created.id}`,
-          },
-        });
+        await queueSchedule(tx, 'distribution', created.id, 'schedule');
+        await touchAssignments(tx, [event.id]);
         await writeAudit(tx, actor, {
           action: 'distribution.create',
           entityType: 'Distribution',
@@ -255,10 +222,20 @@ export async function list(query: DistributionListQuery): Promise<{
   total: number;
 }> {
   const where = {
+    ...(query.q
+      ? {
+          request: {
+            referenceNumber: { contains: query.q, mode: 'insensitive' as const },
+            ...(query.campaignId ? { campaignId: query.campaignId } : {}),
+          },
+        }
+      : {}),
     ...(query.status === undefined ? {} : { status: query.status }),
     ...(query.eventId === undefined ? {} : { calendarEventId: query.eventId }),
     ...(query.requestId === undefined ? {} : { requestId: query.requestId }),
-    ...(query.campaignId === undefined ? {} : { request: { campaignId: query.campaignId } }),
+    ...(query.campaignId === undefined || query.q
+      ? {}
+      : { request: { campaignId: query.campaignId } }),
     ...(query.from === undefined && query.to === undefined
       ? {}
       : {
@@ -303,6 +280,14 @@ export async function update(
 
   await withRetry(() =>
     prisma.$transaction(async (tx) => {
+      const locked = await lockDistribution(tx, id, input.calendarEventId);
+      if (input.calendarEventId && input.calendarEventId !== locked.calendarEventId) {
+        const request = await tx.assistanceRequest.findUniqueOrThrow({
+          where: { id: locked.requestId },
+        });
+        await requireEvent(tx, input.calendarEventId, 'DISTRIBUTION', request.campaignId);
+        await requireCapacity(tx, input.calendarEventId);
+      }
       if (input.calendarEventId !== undefined) {
         const event = await tx.calendarEvent.findUnique({
           where: { id: input.calendarEventId },
@@ -334,6 +319,8 @@ export async function update(
             inventoryItem: { select: { itemTypeId: true } },
           },
         });
+        if (new Set(input.items.map((i) => i.distributionItemId)).size !== input.items.length)
+          throw businessRuleViolation('Duplicate goods are not allowed.');
         const byId = new Map(rows.map((row) => [row.id, row]));
         for (const item of input.items) {
           const current = byId.get(item.distributionItemId);
@@ -377,6 +364,14 @@ export async function update(
           });
         }
       }
+      if (input.calendarEventId && input.calendarEventId !== locked.calendarEventId) {
+        await tx.distribution.update({
+          where: { id },
+          data: { scheduleRevision: { increment: 1 } },
+        });
+        await queueSchedule(tx, 'distribution', id, 'schedule');
+        await touchAssignments(tx, [locked.calendarEventId, input.calendarEventId]);
+      }
       await writeAudit(tx, actor, {
         action: 'distribution.update',
         entityType: 'Distribution',
@@ -393,6 +388,7 @@ export async function complete(
   id: string,
   input: CompleteDistributionInput,
   actor: AuthContext,
+  clock: Clock = systemClock,
 ): Promise<DistributionDto> {
   const existing = await prisma.distribution.findUnique({
     where: { id },
@@ -405,10 +401,19 @@ export async function complete(
 
   await withRetry(() =>
     prisma.$transaction(async (tx) => {
+      const locked = await lockDistribution(tx, id);
       const rows = await tx.distributionItem.findMany({
         where: { distributionId: id },
         select: { id: true, quantity: true, inventoryItemId: true },
       });
+      if (
+        new Set(input.items.map((i) => i.distributionItemId)).size !== rows.length ||
+        input.items.length !== rows.length ||
+        !input.items.some((i) => i.quantity > 0)
+      )
+        throw businessRuleViolation(
+          'Include every allocated item once and hand over at least one item.',
+        );
       const byId = new Map(rows.map((row) => [row.id, row]));
       for (const item of input.items) {
         const planned = byId.get(item.distributionItemId);
@@ -444,6 +449,8 @@ export async function complete(
         data: {
           status: DistributionStatus.DISTRIBUTED,
           receivedByName: input.receivedByName,
+          distributedAt: clock.now(),
+          recordedById: actor.userId,
           notes: input.notes ?? null,
         },
       });
@@ -451,6 +458,7 @@ export async function complete(
         throw invalidTransition(DistributionStatus.SCHEDULED, DistributionStatus.DISTRIBUTED);
       }
       await flipRequestTo(tx, existing.requestId, RequestStatus.DISTRIBUTED);
+      await touchAssignments(tx, [locked.calendarEventId]);
       const request = await tx.assistanceRequest.findUniqueOrThrow({
         where: { id: existing.requestId },
         select: { fullName: true, email: true, trackingNumber: true },
@@ -473,7 +481,7 @@ export async function complete(
         action: 'distribution.complete',
         entityType: 'Distribution',
         entityId: id,
-        metadata: { receivedByName: input.receivedByName },
+        metadata: {},
       });
     }, txOptions),
   );
@@ -487,6 +495,7 @@ async function release(
   actor: AuthContext,
   auditAction: string,
   mail: boolean,
+  clock: Clock = systemClock,
 ): Promise<DistributionDto> {
   const existing = await prisma.distribution.findUnique({
     where: { id },
@@ -499,9 +508,17 @@ async function release(
 
   await withRetry(() =>
     prisma.$transaction(async (tx) => {
+      const locked = await lockDistribution(tx, id);
+      if (to === 'NO_SHOW') {
+        const event = await tx.calendarEvent.findUniqueOrThrow({
+          where: { id: locked.calendarEventId },
+        });
+        if (event.endAt > clock.now())
+          throw businessRuleViolation('Mark no-show only after the event ends.');
+      }
       const claimed = await tx.distribution.updateMany({
         where: { id, status: DistributionStatus.SCHEDULED },
-        data: { status: to },
+        data: { status: to, scheduleRevision: { increment: 1 } },
       });
       if (claimed.count === 0) throw invalidTransition(DistributionStatus.SCHEDULED, to);
       const rows = await tx.distributionItem.findMany({
@@ -517,7 +534,8 @@ async function release(
         });
       }
       await flipRequestTo(tx, existing.requestId, RequestStatus.APPROVED);
-      if (mail) await mailCancelled(tx, existing.requestId, id);
+      await touchAssignments(tx, [locked.calendarEventId]);
+      if (mail) await queueSchedule(tx, 'distribution', id, 'cancel', clock);
       await writeAudit(tx, actor, {
         action: auditAction,
         entityType: 'Distribution',
@@ -530,8 +548,12 @@ async function release(
   return getDetail(id);
 }
 
-export async function noShow(id: string, actor: AuthContext): Promise<DistributionDto> {
-  return release(id, DistributionStatus.NO_SHOW, actor, 'distribution.no-show', false);
+export async function noShow(
+  id: string,
+  actor: AuthContext,
+  clock: Clock = systemClock,
+): Promise<DistributionDto> {
+  return release(id, DistributionStatus.NO_SHOW, actor, 'distribution.no-show', false, clock);
 }
 
 export async function cancel(id: string, actor: AuthContext): Promise<DistributionDto> {

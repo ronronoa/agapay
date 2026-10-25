@@ -44,13 +44,18 @@ const waterItem = {
 
 function mockGet(path: string): unknown {
   if (path.startsWith('/api/v1/public/campaigns')) {
-    return { data: { items: [campaign], page: 1, pageSize: 100, total: 1 } };
+    return {
+      data: { items: campaignItems, page: 1, pageSize: 100, total: campaignItems.length },
+    };
   }
   return { data: { items: [foodItem, waterItem], page: 1, pageSize: 100, total: 2 } };
 }
 
+let campaignItems: unknown[] = [campaign];
+
 beforeEach(() => {
   vi.clearAllMocks();
+  campaignItems = [campaign];
   vi.mocked(apiFetch).mockImplementation((path: string) => {
     if (path.startsWith('/api/v1/public/')) return Promise.resolve(mockGet(path));
     return Promise.reject(new Error(`unexpected POST ${path}`));
@@ -68,18 +73,31 @@ function renderPage(): ReturnType<typeof render> {
   );
 }
 
-function fillStepOne(): void {
+async function fillStepOne(): Promise<void> {
   fireEvent.change(screen.getByLabelText('Full name *'), { target: { value: 'Maria Santos' } });
   fireEvent.change(screen.getByLabelText('Email address *'), {
     target: { value: 'maria@example.com' },
   });
   fireEvent.change(screen.getByLabelText('Mobile number *'), { target: { value: '9171234567' } });
+  // Location selects are filled from the campaign areas query, which may still
+  // be loading (or empty), so wait for the option before choosing it.
+  const barangays = await screen.findAllByRole('option', { name: 'San Isidro' });
+  if (barangays.length === 0) return;
   fireEvent.change(screen.getByLabelText('Barangay *'), { target: { value: 'San Isidro' } });
   fireEvent.change(screen.getByLabelText('City or municipality *'), {
     target: { value: 'Quezon City' },
   });
   fireEvent.change(screen.getByLabelText('Province *'), { target: { value: 'Metro Manila' } });
 }
+
+// A second area proves the city list narrows to the chosen barangay.
+const multiAreaCampaign = {
+  ...campaign,
+  areas: [
+    { barangay: 'San Isidro', city: 'Quezon City', province: 'Metro Manila' },
+    { barangay: 'Poblacion', city: 'Makati City', province: 'Metro Manila' },
+  ],
+};
 
 function fillStepTwo(): void {
   fireEvent.change(screen.getByLabelText('Relief campaign *'), {
@@ -116,9 +134,59 @@ describe('RequestAssistancePage', () => {
     expect(screen.queryByLabelText('Relief campaign *')).toBeNull();
   });
 
+  it('summarises invalid fields accessibly and keeps focus on the summary', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getAllByRole('alert')
+          .some((node) => node.textContent?.includes('There is a problem')),
+      ).toBe(true),
+    );
+    const summary = screen
+      .getAllByRole('alert')
+      .find((node) => node.textContent?.includes('There is a problem'));
+    expect(summary).toHaveTextContent('Full name');
+    expect(summary).toHaveTextContent('Email address');
+    expect(document.activeElement).toBe(summary);
+  });
+
+  it('offers the campaign areas as barangay and city choices', async () => {
+    campaignItems = [multiAreaCampaign];
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'Poblacion' })).toBeInTheDocument(),
+    );
+    // Cities narrow to the chosen barangay.
+    fireEvent.change(screen.getByLabelText('Barangay *'), { target: { value: 'Poblacion' } });
+    const cities = screen.getAllByRole('option').map((node) => node.textContent ?? '');
+    expect(cities).toContain('Makati City');
+    expect(cities).not.toContain('Quezon City');
+  });
+
+  it('explains when no active campaign exists and blocks the form', async () => {
+    campaignItems = [];
+    renderPage();
+    expect(await screen.findByText('No active relief campaigns right now')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue to assistance needs →' })).toBeDisabled();
+  });
+
+  it('explains when a campaign has no affected areas', async () => {
+    campaignItems = [{ ...campaign, id: 'no-area', name: 'No Area Campaign', areas: [] }, campaign];
+    renderPage();
+    await fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+    await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Relief campaign *'), { target: { value: 'no-area' } });
+
+    expect(await screen.findByText(/has no affected areas yet/)).toBeInTheDocument();
+  });
+
   it('moves to assistance needs and keeps entries when going back', async () => {
     renderPage();
-    fillStepOne();
+    await fillStepOne();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
 
     await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
@@ -132,14 +200,14 @@ describe('RequestAssistancePage', () => {
 
   it('shows cap hints from the goods catalogue', async () => {
     renderPage();
-    fillStepOne();
+    await fillStepOne();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
     await waitFor(() => expect(screen.getByText('Up to 5 per request')).toBeInTheDocument());
   });
 
   it('reviews details with edit actions before submitting', async () => {
     renderPage();
-    fillStepOne();
+    await fillStepOne();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
     await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
     fillStepTwo();
@@ -154,7 +222,7 @@ describe('RequestAssistancePage', () => {
 
   it('blocks submit until consent is checked without calling the API', async () => {
     renderPage();
-    fillStepOne();
+    await fillStepOne();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
     await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
     fillStepTwo();
@@ -173,7 +241,7 @@ describe('RequestAssistancePage', () => {
 
   it('shows the reference number with copy and tracking after submit', async () => {
     renderPage();
-    fillStepOne();
+    await fillStepOne();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
     await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
     fillStepTwo();
@@ -200,7 +268,7 @@ describe('RequestAssistancePage', () => {
 
   it('points duplicate submissions at the tracking page', async () => {
     renderPage();
-    fillStepOne();
+    await fillStepOne();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
     await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
     fillStepTwo();
@@ -230,7 +298,7 @@ describe('RequestAssistancePage', () => {
 
   it('submits selections from collapsed groups', async () => {
     const { container } = renderPage();
-    fillStepOne();
+    await fillStepOne();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
     await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
     fillStepTwo();
@@ -257,7 +325,7 @@ describe('RequestAssistancePage', () => {
 
   it('starts every goods group collapsed and narrows them with the filter', async () => {
     const { container } = renderPage();
-    fillStepOne();
+    await fillStepOne();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
     await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
     const groups = [...container.querySelectorAll('details')];
@@ -274,5 +342,62 @@ describe('RequestAssistancePage', () => {
 
     fireEvent.change(filter, { target: { value: 'no such good' } });
     expect(screen.getByText('No goods match that filter.')).toBeInTheDocument();
+  });
+});
+
+describe('RequestAssistancePage outside-area escape hatch', () => {
+  it('swaps the location selects for free text and back', async () => {
+    renderPage();
+    await screen.findAllByRole('option', { name: 'San Isidro' });
+    expect(screen.getByLabelText('Barangay *').tagName).toBe('SELECT');
+
+    fireEvent.click(screen.getByLabelText(/isn.t in the list/));
+    expect(screen.getByLabelText('Barangay *').tagName).toBe('INPUT');
+    expect(screen.getByLabelText('City or municipality *').tagName).toBe('INPUT');
+    expect(screen.getByLabelText('Province *').tagName).toBe('INPUT');
+    expect(screen.getByText(/reviewed by staff/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText(/isn.t in the list/));
+    expect(screen.getByLabelText('Barangay *').tagName).toBe('SELECT');
+  });
+
+  it('submits a typed location when the area is not listed', async () => {
+    let submitted: unknown = null;
+    vi.mocked(apiFetch).mockImplementation((path: string, options?: { body?: unknown }) => {
+      if (path === '/api/v1/public/assistance-requests') {
+        submitted = options?.body;
+        return Promise.resolve({ data: { referenceNumber: 'REQ-2026-009999', status: 'PENDING' } });
+      }
+      return Promise.resolve(mockGet(path));
+    });
+    renderPage();
+    await screen.findAllByRole('option', { name: 'San Isidro' });
+    fireEvent.change(screen.getByLabelText('Full name *'), { target: { value: 'Maria Santos' } });
+    fireEvent.change(screen.getByLabelText('Email address *'), {
+      target: { value: 'maria@example.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Mobile number *'), { target: { value: '9171234567' } });
+    fireEvent.click(screen.getByLabelText(/isn.t in the list/));
+    fireEvent.change(screen.getByLabelText('Barangay *'), { target: { value: 'Barangay 999' } });
+    fireEvent.change(screen.getByLabelText('City or municipality *'), {
+      target: { value: 'Remote Town' },
+    });
+    fireEvent.change(screen.getByLabelText('Province *'), { target: { value: 'Isabela' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+    await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Relief campaign *'), {
+      target: { value: campaign.id },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: /Food Pack/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to review →' }));
+    await waitFor(() => expect(screen.getByText('Check your details')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: /I consent/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit assistance request' }));
+
+    await waitFor(() => expect(screen.getByText('REQ-2026-009999')).toBeInTheDocument());
+    const body = submitted as { barangay?: string; city?: string; province?: string } | null;
+    expect(body?.barangay).toBe('Barangay 999');
+    expect(body?.city).toBe('Remote Town');
+    expect(body?.province).toBe('Isabela');
   });
 });

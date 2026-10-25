@@ -393,6 +393,10 @@ export async function resetPassword(input: ResetPasswordInput, clock: Clock): Pr
       if (claimed.count === 0) throw conflict('This link has already been used.');
 
       await tx.user.update({ where: { id: token.userId }, data: { passwordHash } });
+      await tx.user.updateMany({
+        where: { id: token.userId, role: { in: ['ADMIN', 'STAFF'] }, emailVerifiedAt: null },
+        data: { emailVerifiedAt: now },
+      });
       await tx.refreshToken.updateMany({
         where: { userId: token.userId, revokedAt: null },
         data: { revokedAt: now },

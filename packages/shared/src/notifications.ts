@@ -10,6 +10,7 @@ const emailStatuses = [
 ] as const;
 
 const notificationTypes = [
+  NotificationType.SUPPORT_UNREAD,
   NotificationType.DONOR_VERIFY_EMAIL,
   NotificationType.DONOR_PASSWORD_RESET,
   NotificationType.DONATION_SUBMITTED,
@@ -88,5 +89,8 @@ export const emailUsageResponseSchema = z.object({
     sentToday: z.number().int(),
     limit: z.number().int(),
     remaining: z.number().int(),
+    sentThisHour: z.number().int(),
+    hourlyLimit: z.number().int(),
+    remainingThisHour: z.number().int(),
   }),
 });

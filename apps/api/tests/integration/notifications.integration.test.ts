@@ -18,6 +18,8 @@ import { hashPassword } from '../../src/modules/auth/password.js';
 import { drainOnce, isOverBudget } from '../../src/jobs/email-worker.js';
 import { createConsoleProvider } from '../../src/modules/notifications/email/console-provider.js';
 import type { EmailProvider } from '../../src/modules/notifications/email/index.js';
+import { retryEmail } from '../../src/modules/notifications/notification.service.js';
+import { randomUUID } from 'node:crypto';
 
 const app = createApp();
 const PASSWORD = 'integration test secret';
@@ -25,6 +27,8 @@ const RUN = `${process.pid.toString(36)}${Date.now().toString(36).slice(-4)}`;
 
 let seq = 0;
 let staffToken = '';
+let adminToken = '';
+let donorToken = '';
 let ipSeq = 0;
 
 const uniqueIp = (): string => `198.51.100.${((ipSeq += 1) % 250) + 1}`;
@@ -53,6 +57,23 @@ beforeAll(async () => {
     .set('X-Forwarded-For', uniqueIp())
     .send({ email, password: PASSWORD });
   staffToken = parse(res, accessTokenResponseSchema).data.accessToken;
+  for (const role of [UserRole.ADMIN, UserRole.DONOR]) {
+    const user = await prisma.user.create({
+      data: {
+        name: 'Email Operations Fixture',
+        email: `notify-${role.toLowerCase()}-${RUN}@example.com`,
+        passwordHash: await hashPassword(PASSWORD),
+        role,
+      },
+    });
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .set('X-Forwarded-For', uniqueIp())
+      .send({ email: user.email, password: PASSWORD });
+    const token = parse(login, accessTokenResponseSchema).data.accessToken;
+    if (role === UserRole.ADMIN) adminToken = token;
+    else donorToken = token;
+  }
 });
 
 afterAll(async () => {
@@ -199,7 +220,192 @@ describe('GET /notifications/emails/usage', () => {
     // assertion is the row's own status below.
     expect(usage.sentToday).toBeGreaterThanOrEqual(beforeCount + 1);
     expect(usage.remaining).toBe(Math.max(0, usage.limit - usage.sentToday));
+    expect(usage.hourlyLimit).toBe(env.EMAIL_HOURLY_LIMIT);
+    expect(usage.sentThisHour).toBeGreaterThanOrEqual(1);
+    expect(usage.remainingThisHour).toBe(Math.max(0, usage.hourlyLimit - usage.sentThisHour));
     const row = await prisma.emailNotification.findUnique({ where: { id } });
     expect(row?.status).toBe('SENT');
+  });
+});
+
+describe('M5C email operations', () => {
+  async function failedEmail() {
+    return prisma.emailNotification.create({
+      data: {
+        type: 'DONOR_VERIFY_EMAIL',
+        toEmail: `ops-${RUN}@example.com`,
+        subject: 'Operations fixture',
+        templateData: { name: 'Private fixture', token: 'never-return-this-token' },
+        dedupeKey: uniqueDedupe('operations'),
+        status: 'FAILED',
+        attempts: 5,
+        lastError: 'Provider unavailable',
+        priority: 3,
+      },
+    });
+  }
+  it('denies donors and anonymous callers on list, usage and retry; allows administrators', async () => {
+    const row = await failedEmail();
+    for (const token of ['', donorToken]) {
+      for (const path of ['', '/usage', `/${row.id}/retry`]) {
+        const req = path.endsWith('/retry')
+          ? request(app).post(`/api/v1/notifications/emails${path}`)
+          : request(app).get(`/api/v1/notifications/emails${path}`);
+        if (token) req.set('Authorization', `Bearer ${token}`);
+        const res = await req.set('X-Forwarded-For', uniqueIp());
+        expect(res.status).toBe(token ? 403 : 401);
+      }
+    }
+    const list = await request(app)
+      .get('/api/v1/notifications/emails?status=FAILED')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(list.status).toBe(200);
+    expect(list.headers['cache-control']).toBe('no-store');
+    expect(JSON.stringify(list.body)).not.toContain('never-return-this-token');
+    const usage = await request(app)
+      .get('/api/v1/notifications/emails/usage')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(usage.status).toBe(200);
+    expect(usage.headers['cache-control']).toBe('no-store');
+    const retry = await request(app)
+      .post(`/api/v1/notifications/emails/${row.id}/retry`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(retry.status).toBe(200);
+    expect(retry.headers['cache-control']).toBe('no-store');
+  });
+  it('filters status/type and gives stable non-overlapping pages for identical timestamps', async () => {
+    const time = new Date('2098-01-01T00:00:00Z');
+    for (let i = 0; i < 4; i++) {
+      await prisma.emailNotification.create({
+        data: {
+          type: 'DONATION_REJECTED',
+          toEmail: `page-${RUN}@example.com`,
+          subject: 'Pagination fixture',
+          templateData: {},
+          dedupeKey: uniqueDedupe('page'),
+          status: 'FAILED',
+          createdAt: time,
+        },
+      });
+    }
+    const pages = [];
+    for (const page of [1, 2]) {
+      const res = await request(app)
+        .get(
+          `/api/v1/notifications/emails?status=FAILED&type=DONATION_REJECTED&pageSize=2&page=${page}`,
+        )
+        .set('Authorization', `Bearer ${staffToken}`);
+      expect(res.status).toBe(200);
+      const body = parse(res, emailListResponseSchema);
+      expect(body.meta.total).toBeGreaterThanOrEqual(4);
+      expect(body.data).toHaveLength(2);
+      expect(
+        body.data.every((row) => row.status === 'FAILED' && row.type === 'DONATION_REJECTED'),
+      ).toBe(true);
+      pages.push(...body.data.map((row) => row.id));
+    }
+    expect(new Set(pages).size).toBe(4);
+    const bad = await request(app)
+      .get('/api/v1/notifications/emails?status=UNKNOWN')
+      .set('Authorization', `Bearer ${staffToken}`);
+    expect(bad.status).toBe(400);
+  });
+  it('serializes concurrent retries and preserves dedupe, priority, payload and recipient with one audit entry', async () => {
+    const row = await failedEmail();
+    const responses = await Promise.all(
+      [staffToken, adminToken].map((token) =>
+        request(app)
+          .post(`/api/v1/notifications/emails/${row.id}/retry`)
+          .set('Authorization', `Bearer ${token}`),
+      ),
+    );
+    expect(responses.map((res) => res.status).sort()).toEqual([200, 409]);
+    const updated = await prisma.emailNotification.findUniqueOrThrow({ where: { id: row.id } });
+    expect(updated).toMatchObject({
+      status: 'QUEUED',
+      attempts: 0,
+      lastError: null,
+      dedupeKey: row.dedupeKey,
+      priority: row.priority,
+      templateData: row.templateData,
+      toEmail: row.toEmail,
+    });
+    const audits = await prisma.auditLog.findMany({
+      where: { entityId: row.id, action: 'notification.retry' },
+    });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.metadata).toBeNull();
+  });
+  it('rolls back requeuing if its audit cannot be written', async () => {
+    const row = await failedEmail();
+    await expect(retryEmail(row.id, { userId: randomUUID(), role: 'ADMIN' })).rejects.toThrow();
+    const saved = await prisma.emailNotification.findUniqueOrThrow({ where: { id: row.id } });
+    expect(saved.status).toBe('FAILED');
+    expect(saved.attempts).toBe(5);
+    expect(saved.lastError).toBe(row.lastError);
+  });
+  it('rejects invalid/missing identifiers and every non-failed status', async () => {
+    for (const [id, status] of [
+      ['bad-id', 400],
+      [randomUUID(), 404],
+    ] as const) {
+      const res = await request(app)
+        .post(`/api/v1/notifications/emails/${id}/retry`)
+        .set('Authorization', `Bearer ${staffToken}`);
+      expect(res.status).toBe(status);
+    }
+    const row = await failedEmail();
+    for (const status of ['QUEUED', 'SENDING', 'SENT', 'SUPPRESSED'] as const) {
+      await prisma.emailNotification.update({ where: { id: row.id }, data: { status } });
+      const res = await request(app)
+        .post(`/api/v1/notifications/emails/${row.id}/retry`)
+        .set('Authorization', `Bearer ${staffToken}`);
+      expect(res.status).toBe(409);
+      expect(
+        (await prisma.emailNotification.findUniqueOrThrow({ where: { id: row.id } })).status,
+      ).toBe(status);
+    }
+  });
+  it('suppresses an obsolete schedule after manual retry without sending it', async () => {
+    const row = await failedEmail();
+    await prisma.emailNotification.update({
+      where: { id: row.id },
+      data: {
+        type: 'COLLECTION_SCHEDULED',
+        priority: 1,
+        templateData: {
+          name: 'Fixture',
+          title: 'Obsolete collection',
+          location: 'Fixture site',
+          startAt: '2099-01-01T00:00:00Z',
+          endAt: '2099-01-01T01:00:00Z',
+          schedule: {
+            kind: 'collection',
+            id: randomUUID(),
+            revision: 1,
+            mode: 'schedule',
+            eventId: randomUUID(),
+            eventRevision: 1,
+          },
+        },
+      },
+    });
+    const res = await request(app)
+      .post(`/api/v1/notifications/emails/${row.id}/retry`)
+      .set('Authorization', `Bearer ${staffToken}`);
+    expect(res.status).toBe(200);
+    const sentKeys: string[] = [];
+    await drainOnce({
+      provider: {
+        send: (input) => {
+          if (input.dedupeKey !== undefined) sentKeys.push(input.dedupeKey);
+          return Promise.resolve({ providerMessageId: 'fixture-provider' });
+        },
+      },
+    });
+    expect(
+      (await prisma.emailNotification.findUniqueOrThrow({ where: { id: row.id } })).status,
+    ).toBe('SUPPRESSED');
+    expect(sentKeys).not.toContain(row.dedupeKey);
   });
 });

@@ -4,9 +4,11 @@ import { env } from './lib/env.js';
 import { logger } from './lib/logger.js';
 import { disconnectPrisma } from './lib/prisma.js';
 import { startEmailWorker, stopEmailWorker } from './jobs/email-worker.js';
+import { attachRealtime } from './modules/support/realtime.js';
 
 const app = createApp();
 const server = createServer(app);
+const realtime = attachRealtime(server);
 
 server.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'api listening');
@@ -29,7 +31,9 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     }, SHUTDOWN_TIMEOUT_MS);
     forceExit.unref();
 
-    void stopEmailWorker()
+    void realtime
+      .stop()
+      .then(() => stopEmailWorker())
       .catch((err: unknown) => {
         logger.error({ err }, 'failed to stop email worker cleanly');
       })
