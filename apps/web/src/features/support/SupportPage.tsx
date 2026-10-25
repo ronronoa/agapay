@@ -599,7 +599,7 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                   <label className="block text-sm font-medium" htmlFor="support-message">
                     Message
                   </label>
-                  <div className="relative">
+                  <div className="relative flex items-center">
                     <Textarea
                       id="support-message"
                       className="min-h-16 pr-16"
@@ -637,7 +637,7 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                     <Button
                       type="submit"
                       size="icon"
-                      className="absolute bottom-2 right-2 rounded-full"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full"
                       disabled={composerDisabled || !draft?.body.trim()}
                       aria-label={busy ? 'Sending…' : error ? 'Retry send' : 'Send message'}
                       title={busy ? 'Sending…' : error ? 'Retry send' : 'Send message'}
