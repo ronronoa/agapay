@@ -1,3 +1,4 @@
+import { lockCampaign } from '../campaigns/campaigns.service.js';
 import type {
   CalendarEventDto,
   CalendarEventListQuery,
@@ -78,9 +79,10 @@ export async function create(
 ): Promise<CalendarEventDto> {
   if (input.type !== 'DISTRIBUTION' && input.capacity != null)
     throw businessRuleViolation('Capacity is only available for distribution events.');
-  if (!(await prisma.campaign.findUnique({ where: { id: input.campaignId } })))
-    throw notFound('Campaign');
   const id = await prisma.$transaction(async (tx) => {
+    const campaign = await lockCampaign(tx, input.campaignId);
+    if (campaign.status !== 'ACTIVE' && campaign.status !== 'DRAFT')
+      throw businessRuleViolation('Closed campaigns cannot have new events.');
     const event = await tx.calendarEvent.create({
       data: {
         ...input,

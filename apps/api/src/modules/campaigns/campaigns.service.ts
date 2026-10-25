@@ -50,6 +50,7 @@ function toDto(row: {
   endDate: Date | null;
   coverImageUrl: string | null;
   createdAt: Date;
+  updatedAt: Date;
   areas: { id: string; barangay: string; city: string; province: string }[];
   priorityItems: {
     itemTypeId: string;
@@ -72,6 +73,7 @@ function toDto(row: {
     endDate: row.endDate === null ? null : row.endDate.toISOString(),
     coverImageUrl: row.coverImageUrl,
     createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
     areas: row.areas,
     priorityItems: row.priorityItems.map((item) => ({
       itemTypeId: item.itemTypeId,
@@ -83,7 +85,7 @@ function toDto(row: {
     requestCount: row._count.requests,
     eventCount: row._count.events,
     inventoryCount: row._count.inventoryItems,
-    deletable: !row.isSystem && dependents === 0,
+    deletable: !row.isSystem && row.status === CampaignStatus.DRAFT && dependents === 0,
   };
 }
 
@@ -123,7 +125,7 @@ export async function list(query: CampaignListQuery): Promise<{
 export async function getById(id: string): Promise<CampaignDto> {
   const row = await prisma.campaign.findUnique({ where: { id }, include: campaignInclude });
   if (row === null) throw notFound('Campaign');
-  return toDto(row);
+  return { ...toDto(row), closureBlockers: await closureBlockers(prisma, id) };
 }
 
 export async function getBySlug(slug: string): Promise<CampaignDto> {
@@ -139,20 +141,20 @@ export async function setCoverImage(
   imageUrl: string,
   actor: AuthContext,
 ): Promise<{ previousImageUrl: string | null; campaign: CampaignDto }> {
-  const existing = await prisma.campaign.findUnique({
-    where: { id },
-    select: { id: true, coverImageUrl: true },
-  });
-  if (existing === null) throw notFound('Campaign');
-
-  await prisma.campaign.update({ where: { id }, data: { coverImageUrl: imageUrl } });
-  await writeAudit(prisma, actor, {
-    action: 'campaign.image',
-    entityType: 'Campaign',
-    entityId: id,
-    metadata: { replaced: existing.coverImageUrl !== null },
-  });
-  return { previousImageUrl: existing.coverImageUrl, campaign: await getById(id) };
+  return prisma.$transaction(async (tx) => {
+    const existing = await lockCampaign(tx, id);
+    if (existing.isSystem)
+      throw businessRuleViolation('The General Pool is managed by the system.');
+    await tx.campaign.update({ where: { id }, data: { coverImageUrl: imageUrl } });
+    await writeAudit(tx, actor, {
+      action: 'campaign.image',
+      entityType: 'Campaign',
+      entityId: id,
+      metadata: { replaced: existing.coverImageUrl !== null },
+    });
+    const row = await tx.campaign.findUniqueOrThrow({ where: { id }, include: campaignInclude });
+    return { previousImageUrl: existing.coverImageUrl, campaign: toDto(row) };
+  }, txOptions);
 }
 
 export async function create(
@@ -260,22 +262,16 @@ export async function update(
   input: UpdateCampaignInput,
   actor: AuthContext,
 ): Promise<CampaignDto> {
-  const existing = await prisma.campaign.findUnique({ where: { id }, select: { status: true } });
-  if (existing === null) throw notFound('Campaign');
-
-  const nextStart = input.startDate;
-  const nextEnd = input.endDate;
-  if (
-    nextStart !== undefined &&
-    nextEnd !== undefined &&
-    nextEnd !== null &&
-    nextEnd <= nextStart
-  ) {
-    throw businessRuleViolation('endDate must be after startDate');
-  }
-
   return withRetry(() =>
     prisma.$transaction(async (tx) => {
+      const existing = await lockCampaign(tx, id);
+      checkVersion(existing.updatedAt, input.expectedUpdatedAt);
+      if (existing.isSystem)
+        throw businessRuleViolation('The General Pool is managed by the system.');
+      const nextStart = input.startDate ?? existing.startDate;
+      const nextEnd = input.endDate === undefined ? existing.endDate : input.endDate;
+      if (nextEnd !== null && nextEnd <= nextStart)
+        throw businessRuleViolation('End date must be after start date.');
       await tx.campaign.update({
         where: { id },
         data: {
@@ -306,81 +302,106 @@ export async function update(
   ).then(() => getById(id));
 }
 
+// Shared by campaign edits/closure and new operational submissions. The row
+// lock makes eligibility checks and related inserts observe one campaign state.
+export async function lockCampaign(tx: Prisma.TransactionClient, id: string) {
+  await tx.$queryRaw`SELECT id FROM "Campaign" WHERE id = ${id} FOR UPDATE`;
+  const campaign = await tx.campaign.findUnique({ where: { id } });
+  if (campaign === null) throw notFound('Campaign');
+  return campaign;
+}
+
+function checkVersion(updatedAt: Date, expected?: string): void {
+  if (expected !== undefined && updatedAt.toISOString() !== expected)
+    throw conflict('This campaign changed. Refresh and review it before trying again.');
+}
+
+async function closureBlockers(tx: Prisma.TransactionClient, id: string) {
+  const [donations, requests, events, allocations, stock] = await Promise.all([
+    tx.donation.count({
+      where: { campaignId: id, status: { in: ['PENDING', 'VERIFIED', 'SCHEDULED', 'COLLECTED'] } },
+    }),
+    tx.assistanceRequest.count({
+      where: {
+        campaignId: id,
+        status: { in: ['PENDING', 'UNDER_REVIEW', 'APPROVED', 'SCHEDULED'] },
+      },
+    }),
+    tx.calendarEvent.count({ where: { campaignId: id, status: 'SCHEDULED' } }),
+    tx.distribution.count({ where: { request: { campaignId: id }, status: 'SCHEDULED' } }),
+    tx.inventoryItem.aggregate({ where: { campaignId: id }, _sum: { reserved: true } }),
+  ]);
+  return [
+    { blocking: 'donations' as const, count: donations },
+    { blocking: 'requests' as const, count: requests },
+    { blocking: 'events' as const, count: events },
+    { blocking: 'allocations' as const, count: allocations },
+    { blocking: 'reservedGoods' as const, count: stock._sum.reserved ?? 0 },
+  ].filter((row) => row.count > 0);
+}
+
 export async function transition(
   id: string,
   to: CampaignTransitionTarget,
   actor: AuthContext,
   clock: Clock,
+  expectedUpdatedAt?: string,
 ): Promise<CampaignDto> {
-  const existing = await prisma.campaign.findUnique({
-    where: { id },
-    select: { status: true, isSystem: true },
-  });
-  if (existing === null) throw notFound('Campaign');
-
-  // BR-CAM-02: the system pool is reference data, never a lifecycle target.
-  if (existing.isSystem && to !== CampaignStatus.ACTIVE) {
-    throw businessRuleViolation('The General Pool campaign cannot be completed or archived.');
-  }
-  if (!canTransition(existing.status, to)) {
-    throw invalidTransition(existing.status, to);
-  }
-
-  const claimed = await prisma.campaign.updateMany({
-    where: { id, status: existing.status },
-    data: { status: to },
-  });
-  if (claimed.count === 0) throw invalidTransition(existing.status, to);
-
-  await writeAudit(prisma, actor, {
-    action: `campaign.${to.toLowerCase()}`,
-    entityType: 'Campaign',
-    entityId: id,
-    metadata: { from: existing.status, to },
-  });
-  void clock;
+  await withRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const existing = await lockCampaign(tx, id);
+      checkVersion(existing.updatedAt, expectedUpdatedAt);
+      // BR-CAM-02: the system pool is reference data, never a lifecycle target.
+      if (existing.isSystem)
+        throw businessRuleViolation('The General Pool campaign cannot be completed or archived.');
+      if (!canTransition(existing.status, to)) throw invalidTransition(existing.status, to);
+      if (to !== CampaignStatus.ACTIVE) {
+        const blockers = await closureBlockers(tx, id);
+        if (blockers.length)
+          throw conflict('Resolve outstanding campaign work before closing this campaign.', {
+            blockers,
+          });
+      }
+      const claimed = await tx.campaign.updateMany({
+        where: { id, status: existing.status, updatedAt: existing.updatedAt },
+        data: { status: to, updatedAt: clock.now() },
+      });
+      if (claimed.count !== 1)
+        throw conflict('This campaign changed. Refresh before trying again.');
+      await writeAudit(tx, actor, {
+        action: `campaign.${to.toLowerCase()}`,
+        entityType: 'Campaign',
+        entityId: id,
+        metadata: { from: existing.status, to },
+      });
+    }, txOptions),
+  );
   return getById(id);
 }
 
-export async function remove(id: string, actor: AuthContext): Promise<void> {
-  const existing = await prisma.campaign.findUnique({
-    where: { id },
-    select: {
-      isSystem: true,
-      _count: { select: { donations: true, requests: true, events: true, inventoryItems: true } },
-    },
-  });
-  if (existing === null) throw notFound('Campaign');
-  if (existing.isSystem) {
-    throw businessRuleViolation('The General Pool campaign cannot be deleted.');
-  }
-
-  // BR-CAM-03: a campaign carrying real history is archived, never deleted.
-  const blockers: { blocking: string; count: number }[] = [];
-  if (existing._count.donations > 0) {
-    blockers.push({ blocking: 'donations', count: existing._count.donations });
-  }
-  if (existing._count.requests > 0) {
-    blockers.push({ blocking: 'requests', count: existing._count.requests });
-  }
-  if (existing._count.events > 0) {
-    blockers.push({ blocking: 'events', count: existing._count.events });
-  }
-  if (existing._count.inventoryItems > 0) {
-    blockers.push({ blocking: 'inventoryItems', count: existing._count.inventoryItems });
-  }
-  if (blockers.length > 0) {
-    throw conflict('This campaign has related records and cannot be deleted. Archive it instead.', {
-      blockers,
-    });
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.campaign.delete({ where: { id } });
-    await writeAudit(tx, actor, {
-      action: 'campaign.delete',
-      entityType: 'Campaign',
-      entityId: id,
-    });
-  }, txOptions);
+export async function remove(
+  id: string,
+  actor: AuthContext,
+  expectedUpdatedAt?: string,
+): Promise<string | null> {
+  return withRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const existing = await lockCampaign(tx, id);
+      checkVersion(existing.updatedAt, expectedUpdatedAt);
+      if (existing.isSystem)
+        throw businessRuleViolation('The General Pool campaign cannot be deleted.');
+      const row = await tx.campaign.findUniqueOrThrow({ where: { id }, include: campaignInclude });
+      if (!toDto(row).deletable)
+        throw conflict(
+          'Only unused draft campaigns can be deleted. Preserve history by archiving instead.',
+        );
+      await tx.campaign.delete({ where: { id } });
+      await writeAudit(tx, actor, {
+        action: 'campaign.delete',
+        entityType: 'Campaign',
+        entityId: id,
+      });
+      return existing.coverImageUrl;
+    }, txOptions),
+  );
 }

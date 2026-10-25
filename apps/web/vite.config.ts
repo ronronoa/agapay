@@ -24,6 +24,7 @@ export default defineConfig({
     // first-party, which is what production does too (architecture.md section 5).
     proxy: {
       '/api': { target: apiTarget, changeOrigin: true, ws: true },
+      '/uploads': { target: apiTarget, changeOrigin: true },
     },
   },
   build: {

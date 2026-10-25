@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { promises as fs } from 'node:fs';
 import {
   createCampaignSchema,
+  campaignActionSchema,
   campaignListQuerySchema,
   campaignResponseSchema,
   updateCampaignSchema,
@@ -88,37 +89,37 @@ campaignsRouter.patch('/:id', requireRole('ADMIN'), async (req, res) => {
     .json({ data: await service.update(pathParam(req, 'id'), parsed.data, actorFrom(req)) });
 });
 
-campaignsRouter.post('/:id/activate', requireRole('ADMIN'), async (req, res) => {
-  const result = await service.transition(
-    pathParam(req, 'id'),
-    'ACTIVE',
-    actorFrom(req),
-    systemClock,
-  );
-  res.status(200).json({ data: result });
-});
-
-campaignsRouter.post('/:id/complete', requireRole('ADMIN'), async (req, res) => {
-  const result = await service.transition(
-    pathParam(req, 'id'),
-    'COMPLETED',
-    actorFrom(req),
-    systemClock,
-  );
-  res.status(200).json({ data: result });
-});
-
-campaignsRouter.post('/:id/archive', requireRole('ADMIN'), async (req, res) => {
-  const result = await service.transition(
-    pathParam(req, 'id'),
-    'ARCHIVED',
-    actorFrom(req),
-    systemClock,
-  );
-  res.status(200).json({ data: result });
-});
+for (const [action, status] of [
+  ['activate', 'ACTIVE'],
+  ['complete', 'COMPLETED'],
+  ['archive', 'ARCHIVED'],
+] as const) {
+  campaignsRouter.post(`/:id/${action}`, requireRole('ADMIN'), async (req, res) => {
+    const parsed = campaignActionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) throw validationError(parsed.error.flatten());
+    const result = await service.transition(
+      pathParam(req, 'id'),
+      status,
+      actorFrom(req),
+      systemClock,
+      parsed.data.expectedUpdatedAt,
+    );
+    res.status(200).json({ data: result });
+  });
+}
 
 campaignsRouter.delete('/:id', requireRole('ADMIN'), async (req, res) => {
-  await service.remove(pathParam(req, 'id'), actorFrom(req));
+  const parsed = campaignActionSchema.safeParse(req.body ?? {});
+  if (!parsed.success) throw validationError(parsed.error.flatten());
+  const imageUrl = await service.remove(
+    pathParam(req, 'id'),
+    actorFrom(req),
+    parsed.data.expectedUpdatedAt,
+  );
+  const imagePath = imageUrl === null ? null : campaignUploadPathForUrl(imageUrl);
+  if (imagePath !== null)
+    await fs.unlink(imagePath).catch((err: unknown) => {
+      logger.warn({ err }, 'leftover deleted campaign image could not be removed');
+    });
   res.status(204).send();
 });

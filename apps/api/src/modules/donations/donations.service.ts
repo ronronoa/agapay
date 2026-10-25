@@ -1,3 +1,4 @@
+import { lockCampaign } from '../campaigns/campaigns.service.js';
 import { lockDonation } from '../calendar/assignment-locks.js';
 import { requireEvent, queueSchedule, touchAssignments } from '../calendar/scheduling.js';
 import {
@@ -139,6 +140,7 @@ async function requireActiveCampaign(
   tx: Prisma.TransactionClient,
   campaignId: string,
 ): Promise<{ id: string; name: string }> {
+  await lockCampaign(tx, campaignId);
   const campaign = await tx.campaign.findUnique({
     where: { id: campaignId },
     select: { id: true, name: true, status: true },

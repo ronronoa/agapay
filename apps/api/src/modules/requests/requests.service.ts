@@ -1,3 +1,4 @@
+import { lockCampaign } from '../campaigns/campaigns.service.js';
 import { randomInt } from 'node:crypto';
 import {
   NotificationType,
@@ -199,6 +200,7 @@ export async function submitPublic(
   try {
     id = await withRetry(() =>
       prisma.$transaction(async (tx) => {
+        await lockCampaign(tx, input.campaignId);
         const campaign = await tx.campaign.findUnique({
           where: { id: input.campaignId },
           select: { id: true, status: true, areas: true },
