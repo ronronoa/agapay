@@ -57,6 +57,8 @@ const envSchema = z
     OPENROUTER_API_KEY: z.string().min(1).optional(),
     OPENROUTER_MODEL: z.string().default('meta-llama/llama-3.3-70b-instruct:free'),
     OPENROUTER_FALLBACK_MODELS: z.string().default(''),
+    GOOGLE_GENERATIVE_AI_API_KEY: z.string().trim().min(1).optional(),
+    GEMINI_MODEL: z.string().trim().min(1).optional(),
     CHAT_USER_DAILY_LIMIT: z.coerce.number().int().positive().default(15),
     CHAT_GLOBAL_DAILY_LIMIT: z.coerce.number().int().positive().default(40),
 
@@ -65,6 +67,10 @@ const envSchema = z
     SEED_STAFF_EMAIL: emailSchema.optional(),
     SEED_STAFF_PASSWORD: passwordSchema.optional(),
     SEED_DEMO_PASSWORD: passwordSchema.optional(),
+  })
+  .refine((value) => Boolean(value.GOOGLE_GENERATIVE_AI_API_KEY) === Boolean(value.GEMINI_MODEL), {
+    message: 'GOOGLE_GENERATIVE_AI_API_KEY and GEMINI_MODEL must be set together',
+    path: ['GEMINI_MODEL'],
   })
   .refine(
     (v) =>

@@ -99,7 +99,7 @@ async function refreshAccessToken(): Promise<string | null> {
   return promise;
 }
 
-export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function apiResponse(path: string, options: RequestOptions = {}): Promise<Response> {
   const token = getAccessToken();
   let response = await rawFetch(path, options);
 
@@ -118,6 +118,11 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   if (!response.ok) throw await toApiError(response);
+  return response;
+}
+
+export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await apiResponse(path, options);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }

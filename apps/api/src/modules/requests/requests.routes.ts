@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   approveRequestSchema,
   cancelRequestSchema,
+  correctRequestSchema,
   rejectRequestSchema,
   requestListQuerySchema,
 } from '@agapay/shared';
@@ -30,6 +31,15 @@ requestsRouter.get('/awaiting-stock', async (_req, res) => {
 
 requestsRouter.get('/:id', async (req, res) => {
   res.status(200).json({ data: await service.detail(pathParam(req, 'id')) });
+});
+
+requestsRouter.post('/:id/correct', async (req, res) => {
+  const body: unknown = req.body;
+  const parsed = correctRequestSchema.safeParse(body);
+  if (!parsed.success) throw validationError(parsed.error.flatten());
+  res.status(200).json({
+    data: await service.correct(pathParam(req, 'id'), parsed.data, actorFrom(req), systemClock),
+  });
 });
 
 requestsRouter.post('/:id/claim', async (req, res) => {

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   campaignResponseSchema,
   createCampaignSchema,
+  updateCampaignSchema,
+  type CampaignDto,
   itemTypeListResponseSchema,
 } from '@agapay/shared';
 import { ImagePlus, Plus, Trash2, X } from 'lucide-react';
@@ -89,12 +91,13 @@ function validateImage(file: File): string | null {
   return null;
 }
 
-function validateForm(state: CreateFormState): string | null {
+function validateForm(state: CreateFormState, editing = false): string | null {
   if (state.name.trim().length < 3) return 'Enter a campaign name of at least 3 characters.';
   if (state.description.trim().length === 0) return 'Describe what this campaign is for.';
   if (state.startDate === '') return 'Choose a start date.';
-  if (state.endDate === '') return 'Choose an end date.';
-  if (state.endDate <= state.startDate) return 'End date must be after the start date.';
+  if (!editing && state.endDate === '') return 'Choose an end date.';
+  if (state.endDate !== '' && state.endDate <= state.startDate)
+    return 'End date must be after the start date.';
   for (const area of state.areas) {
     const filled = area.barangay.trim() + area.city.trim() + area.province.trim() !== '';
     if (
@@ -138,12 +141,38 @@ export function CreateCampaignDialog({
   open,
   onClose,
   onCreated,
+  campaign,
 }: {
+  campaign?: CampaignDto;
   open: boolean;
   onClose: () => void;
   onCreated: (message: string) => void;
 }) {
-  const [state, setState] = useState<CreateFormState>(EMPTY_STATE);
+  const [state, setState] = useState<CreateFormState>(() =>
+    campaign
+      ? {
+          name: campaign.name,
+          description: campaign.description,
+          calamityType: campaign.calamityType,
+          startDate: new Date(campaign.startDate).toLocaleDateString('en-CA', {
+            timeZone: 'Asia/Manila',
+          }),
+          endDate: campaign.endDate
+            ? new Date(campaign.endDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+            : '',
+          areas: campaign.areas.map(({ barangay, city, province }) => ({
+            barangay,
+            city,
+            province,
+          })),
+          priorities: campaign.priorityItems.map((item) => ({
+            itemTypeId: item.itemTypeId,
+            targetQuantity: item.targetQuantity?.toString() ?? '',
+          })),
+          image: null,
+        }
+      : EMPTY_STATE,
+  );
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<{ id: string; name: string } | null>(null);
@@ -184,7 +213,7 @@ export function CreateCampaignDialog({
 
   async function submit() {
     if (inFlight.current) return;
-    const invalid = created === null ? validateForm(state) : null;
+    const invalid = created === null ? validateForm(state, campaign !== undefined) : null;
     if (invalid !== null) {
       setFormError(invalid);
       return;
@@ -200,12 +229,13 @@ export function CreateCampaignDialog({
       setFormError('Choose an image to retry the upload, or select Done.');
       return;
     }
-    const input = createCampaignSchema.safeParse({
+    const input = (campaign ? updateCampaignSchema : createCampaignSchema).safeParse({
       name: state.name.trim(),
       description: state.description.trim(),
       calamityType: state.calamityType,
       startDate: state.startDate,
-      endDate: state.endDate,
+      endDate: state.endDate || null,
+      ...(campaign?.updatedAt ? { expectedUpdatedAt: campaign.updatedAt } : {}),
       areas: state.areas
         .filter((row) => row.barangay.trim() + row.city.trim() + row.province.trim() !== '')
         .map((row) => ({
@@ -231,12 +261,15 @@ export function CreateCampaignDialog({
     try {
       if (saved === null) {
         const response = campaignResponseSchema.safeParse(
-          await apiFetch('/api/v1/campaigns', { method: 'POST', body: input.data }),
+          await apiFetch(campaign ? `/api/v1/campaigns/${campaign.id}` : '/api/v1/campaigns', {
+            method: campaign ? 'PATCH' : 'POST',
+            body: input.data,
+          }),
         );
         if (!response.success) {
-          onCreated('Campaign created.');
+          onCreated(campaign ? 'Campaign updated.' : 'Campaign created.');
           toast.warning(
-            'Campaign created, but its details could not be loaded. Refresh the list to confirm.',
+            'Campaign saved, but its details could not be loaded. Refresh the list to confirm.',
           );
           close();
           return;
@@ -245,19 +278,25 @@ export function CreateCampaignDialog({
         setCreated(saved);
       }
       if (image !== null) await uploadImage(saved.id, image);
-      onCreated(`Campaign "${saved.name}" created${image === null ? '' : ' with image'}.`);
-      toast.success(created === null ? 'Campaign created.' : 'Campaign image uploaded.');
+      onCreated(`Campaign "${saved.name}" saved.`);
+      toast.success(
+        created !== null
+          ? 'Campaign image uploaded.'
+          : campaign
+            ? 'Campaign updated.'
+            : 'Campaign created.',
+      );
       close();
     } catch (err) {
       if (saved !== null) {
-        onCreated(`Campaign "${saved.name}" created.`);
+        onCreated(`Campaign "${saved.name}" saved.`);
         toast.warning(
-          'The campaign was created, but the image could not be uploaded. Retry the image upload or select Done.',
+          campaign
+            ? 'The campaign was updated, but the image could not be uploaded. Retry the image upload or select Done.'
+            : 'The campaign was created, but the image could not be uploaded. Retry the image upload or select Done.',
         );
       } else {
-        toast.error(
-          err instanceof ApiClientError ? err.message : 'Create failed. Please try again.',
-        );
+        toast.error(err instanceof ApiClientError ? err.message : 'Save failed. Please try again.');
       }
     } finally {
       inFlight.current = false;
@@ -283,9 +322,11 @@ export function CreateCampaignDialog({
         }}
       >
         <div className="relative shrink-0 border-b border-border px-6 py-5 pr-16">
-          <DialogTitle>Create New Campaign</DialogTitle>
+          <DialogTitle>{campaign ? 'Edit campaign' : 'Create New Campaign'}</DialogTitle>
           <DialogDescription>
-            Set up a relief campaign with its covered areas and priority goods.
+            {campaign
+              ? 'Update campaign details, covered areas, priority goods, and its image. Earlier requests and assignments keep their history.'
+              : 'Set up a relief campaign with its covered areas and priority goods.'}
           </DialogDescription>
           <DialogClose asChild>
             <Button
@@ -346,8 +387,12 @@ export function CreateCampaignDialog({
                   </Field>
                   <Field>
                     <Label>Status</Label>
-                    <Badge className="self-start">Draft</Badge>
-                    <FieldDescription>Activate from the campaign list when ready.</FieldDescription>
+                    <Badge className="self-start">{campaign?.status ?? 'Draft'}</Badge>
+                    <FieldDescription>
+                      {campaign
+                        ? 'Use the campaign actions to change its status.'
+                        : 'Activate from the campaign list when ready.'}
+                    </FieldDescription>
                   </Field>
                 </FieldGroup>
                 <FieldGroup className="grid sm:grid-cols-2">
@@ -364,11 +409,13 @@ export function CreateCampaignDialog({
                     />
                   </Field>
                   <Field>
-                    <Label htmlFor="campaign-end">End date *</Label>
+                    <Label htmlFor="campaign-end">
+                      {campaign ? 'End date (optional)' : 'End date *'}
+                    </Label>
                     <Input
                       id="campaign-end"
                       type="date"
-                      required
+                      required={!campaign}
                       min={state.startDate || undefined}
                       value={state.endDate}
                       onChange={(event) => setState((c) => ({ ...c, endDate: event.target.value }))}
@@ -592,7 +639,9 @@ export function CreateCampaignDialog({
                 ? 'Creating…'
                 : 'Uploading image…'
               : created === null
-                ? 'Create Campaign'
+                ? campaign
+                  ? 'Save changes'
+                  : 'Create Campaign'
                 : 'Retry image upload'}
           </Button>
         </DialogFooter>

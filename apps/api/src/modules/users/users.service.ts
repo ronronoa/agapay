@@ -4,6 +4,8 @@ import {
   NotificationType,
   UserRole,
   hasRole,
+  manualVerificationMethodSchema,
+  type ManualEmailVerificationInput,
   type UserRole as UserRoleType,
 } from '@agapay/shared';
 import { prisma, txOptions } from '../../lib/prisma.js';
@@ -12,7 +14,7 @@ import { businessRuleViolation, conflict, forbidden, notFound } from '../../lib/
 import type { Prisma } from '@prisma/client';
 import type { Clock } from '../../lib/clock.js';
 import { generateOpaqueToken, hashPassword, hashToken } from '../auth/password.js';
-import { write as writeAudit } from '../audit/audit.service.js';
+import { entityActions, write as writeAudit } from '../audit/audit.service.js';
 import type { AuthContext } from '../../types/express.js';
 import type { CreateUserInput, UpdateUserInput, UserListQuery } from '@agapay/shared';
 import { RESET_TOKEN_TTL_MS } from '../auth/auth.config.js';
@@ -72,6 +74,9 @@ export interface UserListRow {
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  emailVerifiedAt: string | null;
+  verificationSource: 'ADMIN' | 'EMAIL_LINK' | 'PERSONNEL_LINK' | 'UNKNOWN' | null;
+  verificationMethod: ManualEmailVerificationInput['method'] | null;
 }
 
 function toDto(row: {
@@ -92,10 +97,55 @@ function toDto(row: {
     role: row.role,
     phone: row.phone,
     emailVerified: row.emailVerifiedAt !== null,
+    emailVerifiedAt: row.emailVerifiedAt?.toISOString() ?? null,
+    verificationSource: row.emailVerifiedAt === null ? null : 'UNKNOWN',
+    verificationMethod: null,
     isActive: row.isActive,
     lastLoginAt: row.lastLoginAt === null ? null : row.lastLoginAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+async function verificationDetails(
+  tx: Prisma.TransactionClient,
+  rows: UserListRow[],
+): Promise<UserListRow[]> {
+  const ids = rows.filter((row) => row.emailVerified).map((row) => row.id);
+  if (!ids.length) return rows;
+  const audits = await entityActions(tx, 'User', ids, [
+    'user.email.verify',
+    'user.email.verify.link',
+    'user.invitation.accept',
+  ]);
+  return rows.map((row) => {
+    const audit = audits.find((entry) => entry.entityId === row.id);
+    if (!row.emailVerified || !audit) return row;
+    const meta = audit.metadata;
+    const method = manualVerificationMethodSchema.safeParse(
+      meta && typeof meta === 'object' && !Array.isArray(meta) ? meta['offlineMethod'] : undefined,
+    );
+    return {
+      ...row,
+      verificationSource:
+        audit.action === 'user.email.verify'
+          ? 'ADMIN'
+          : audit.action === 'user.email.verify.link'
+            ? 'EMAIL_LINK'
+            : 'PERSONNEL_LINK',
+      verificationMethod:
+        audit.action === 'user.email.verify' && method.success ? method.data : null,
+    };
+  });
+}
+
+async function verifiedDto(
+  tx: Prisma.TransactionClient,
+  row: Parameters<typeof toDto>[0],
+): Promise<UserListRow> {
+  const details = await verificationDetails(tx, [toDto(row)]);
+  const result = details[0];
+  if (!result) throw notFound('User');
+  return result;
 }
 
 function prismaErrorCode(err: unknown): string | undefined {
@@ -134,7 +184,12 @@ export async function list(query: UserListQuery): Promise<{
     prisma.user.count({ where }),
   ]);
 
-  return { items: rows.map(toDto), page: query.page, pageSize: query.pageSize, total };
+  return {
+    items: await verificationDetails(prisma, rows.map(toDto)),
+    page: query.page,
+    pageSize: query.pageSize,
+    total,
+  };
 }
 
 export async function create(
@@ -298,7 +353,55 @@ export async function update(
         },
       });
 
-      return toDto(updated);
+      return verifiedDto(tx, updated);
+    }, txOptions),
+  );
+}
+
+export async function verifyDonorEmail(
+  id: string,
+  input: ManualEmailVerificationInput,
+  actor: AuthContext,
+  clock: Clock,
+): Promise<UserListRow> {
+  return withRetry(() =>
+    prisma.$transaction(async (tx) => {
+      await requireManager(tx, actor);
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${id} FOR UPDATE`;
+      const target = await tx.user.findUnique({ where: { id }, select: userSelect });
+      if (target === null) throw notFound('User');
+      if (target.role !== UserRole.DONOR || !target.isActive)
+        throw businessRuleViolation('Only active donor accounts can be verified here.');
+      if (target.emailVerifiedAt !== null) return verifiedDto(tx, target);
+
+      const now = clock.now();
+      const changed = await tx.user.updateMany({
+        where: { id, role: UserRole.DONOR, isActive: true, emailVerifiedAt: null },
+        data: { emailVerifiedAt: now },
+      });
+      if (changed.count !== 1) throw conflict('Account changed. Reload before verifying.');
+      await tx.authToken.updateMany({
+        where: { userId: id, type: AuthTokenType.VERIFY_EMAIL, usedAt: null },
+        data: { usedAt: now },
+      });
+      await tx.emailNotification.updateMany({
+        where: {
+          type: NotificationType.DONOR_VERIFY_EMAIL,
+          status: 'QUEUED',
+          dedupeKey: { startsWith: `verify-email:${id}:` },
+        },
+        data: { status: 'SUPPRESSED' },
+      });
+      await writeAudit(tx, actor, {
+        action: 'user.email.verify',
+        entityType: 'User',
+        entityId: id,
+        metadata: { method: 'manual', offlineMethod: input.method },
+      });
+      return verifiedDto(
+        tx,
+        await tx.user.findUniqueOrThrow({ where: { id }, select: userSelect }),
+      );
     }, txOptions),
   );
 }

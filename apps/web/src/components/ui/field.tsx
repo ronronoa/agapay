@@ -30,6 +30,7 @@ export function FieldDescription({ className, ...props }: ComponentProps<'p'>) {
 }
 
 interface FieldProps<T extends FieldValues> {
+  id?: string;
   control: Control<T>;
   name: FieldPath<T>;
   label: string;
@@ -47,6 +48,7 @@ interface FieldProps<T extends FieldValues> {
 }
 
 export function Field<T extends FieldValues>({
+  id: suppliedId,
   control,
   name,
   label,
@@ -55,7 +57,7 @@ export function Field<T extends FieldValues>({
   children,
   className,
 }: FieldProps<T>) {
-  const id = `field-${name}`;
+  const id = suppliedId ?? `field-${name}`;
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
   return (

@@ -1,3 +1,4 @@
+import { lockCampaign } from '../campaigns/campaigns.service.js';
 import { randomInt } from 'node:crypto';
 import {
   NotificationType,
@@ -13,6 +14,7 @@ import type {
   ApproveRequestInput,
   AssistanceRequestDto,
   CancelRequestInput,
+  CorrectRequestInput,
   RejectRequestInput,
   RequestListQuery,
 } from '@agapay/shared';
@@ -23,6 +25,7 @@ import type { Clock } from '../../lib/clock.js';
 import {
   AppError,
   businessRuleViolation,
+  conflict,
   internal,
   invalidTransition,
   notFound,
@@ -96,6 +99,7 @@ type DetailRow = {
   emailVerifiedAt: Date | null;
   consentAt: Date;
   submittedAt: Date;
+  updatedAt: Date;
   reviewedById: string | null;
   reviewedAt: Date | null;
   approvedAt: Date | null;
@@ -138,6 +142,7 @@ function toDto(row: DetailRow): AssistanceRequestDto {
     possibleDuplicate: row.possibleDuplicate,
     emailVerified: row.emailVerifiedAt !== null,
     submittedAt: row.submittedAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
     reviewedAt: row.reviewedAt === null ? null : row.reviewedAt.toISOString(),
     approvedAt: row.approvedAt === null ? null : row.approvedAt.toISOString(),
     items: row.items.map((item) => ({
@@ -183,6 +188,120 @@ function normalizeLocation(value: string): string {
   return value.trim().toLowerCase();
 }
 
+export async function correct(
+  id: string,
+  input: CorrectRequestInput,
+  actor: AuthContext,
+  clock: Clock,
+): Promise<AssistanceRequestDto> {
+  return withRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const identity = await tx.assistanceRequest.findUnique({
+        where: { id },
+        select: { campaignId: true },
+      });
+      if (identity === null) throw notFound('Assistance request');
+      // Match submission's lock order so duplicate checks also serialize with new requests.
+      await lockCampaign(tx, identity.campaignId);
+      await tx.$queryRaw`SELECT id FROM "AssistanceRequest" WHERE id = ${id} FOR UPDATE`;
+      const row = await tx.assistanceRequest.findUnique({
+        where: { id },
+        include: { items: { include: { itemType: true } } },
+      });
+      if (row === null) throw notFound('Assistance request');
+      if (!['PENDING', 'UNDER_REVIEW'].includes(row.status) || row.anonymizedAt !== null) {
+        throw conflict('Only pending or under-review requests can be corrected.');
+      }
+      if (row.updatedAt.toISOString() !== input.expectedUpdatedAt) {
+        throw conflict('This request changed. Review the latest details before correcting it.');
+      }
+      const fields = [
+        'fullName',
+        'contactNumber',
+        'barangay',
+        'city',
+        'province',
+        'householdSize',
+      ] as const;
+      const changedFields = fields.filter((field) => row[field] !== input[field]);
+      if (changedFields.length === 0)
+        throw businessRuleViolation('Change at least one detail before saving.');
+      for (const item of row.items) {
+        const type = item.itemType;
+        if (type.maxPerRequest !== null && item.quantity > type.maxPerRequest) {
+          throw businessRuleViolation(
+            'Existing requested quantities exceed the current per-request limit.',
+          );
+        }
+        if (
+          type.perHouseholdMember !== null &&
+          item.quantity > type.perHouseholdMember * (input.householdSize ?? 1)
+        ) {
+          throw businessRuleViolation(
+            'The household size is too small for the existing requested quantities.',
+          );
+        }
+      }
+      const campaign = await tx.campaign.findUnique({
+        where: { id: row.campaignId },
+        include: { areas: true },
+      });
+      if (campaign === null) throw notFound('Campaign');
+      const outsideCampaignArea =
+        campaign.areas.length > 0 &&
+        !campaign.areas.some(
+          (area) =>
+            normalizeLocation(area.barangay) === normalizeLocation(input.barangay) &&
+            normalizeLocation(area.city) === normalizeLocation(input.city) &&
+            normalizeLocation(area.province) === normalizeLocation(input.province),
+        );
+      const duplicate = await tx.assistanceRequest.findFirst({
+        where: {
+          id: { not: id },
+          campaignId: row.campaignId,
+          OR: [{ email: row.email }, { contactNumber: input.contactNumber }],
+        },
+        select: { id: true },
+      });
+      // Preserve earlier IP-abuse and duplicate evidence; a correction must not clear it.
+      const possibleDuplicate = row.possibleDuplicate || duplicate !== null;
+      const { expectedUpdatedAt: _expected, reason, ...details } = input;
+      const updated = await tx.assistanceRequest.updateMany({
+        where: { id, status: row.status, updatedAt: row.updatedAt },
+        data: {
+          ...details,
+          outsideCampaignArea,
+          possibleDuplicate,
+          updatedAt: new Date(Math.max(clock.now().getTime(), row.updatedAt.getTime() + 1)),
+        },
+      });
+      if (updated.count !== 1) throw conflict('This request changed. Review the latest details.');
+      await tx.requestStatusEvent.create({
+        data: {
+          requestId: id,
+          fromStatus: row.status,
+          toStatus: row.status,
+          actorId: actor.userId,
+          note: `Clerical correction: ${reason}`,
+          createdAt: clock.now(),
+        },
+      });
+      await writeAudit(tx, actor, {
+        action: 'request.correct',
+        entityType: 'AssistanceRequest',
+        entityId: id,
+        metadata: { changedFields },
+      });
+      const result = await tx.assistanceRequest.findUnique({
+        where: { id },
+        include: detailInclude,
+      });
+      if (result === null) throw notFound('Assistance request');
+      return toDto(result);
+    }, txOptions),
+  );
+}
+
 function prismaErrorCode(err: unknown): string | undefined {
   if (typeof err !== 'object' || err === null) return undefined;
   const code = (err as { code?: unknown }).code;
@@ -199,6 +318,7 @@ export async function submitPublic(
   try {
     id = await withRetry(() =>
       prisma.$transaction(async (tx) => {
+        await lockCampaign(tx, input.campaignId);
         const campaign = await tx.campaign.findUnique({
           where: { id: input.campaignId },
           select: { id: true, status: true, areas: true },
@@ -417,10 +537,12 @@ export async function track(input: TrackRequestInput): Promise<{
     status: row.status,
     statusMessage: requestStatusMessage(row.status),
     submittedAt: row.submittedAt.toISOString(),
-    timeline: row.statusEvents.map((event) => ({
-      status: event.toStatus,
-      at: event.createdAt.toISOString(),
-    })),
+    timeline: row.statusEvents
+      .filter((event) => event.fromStatus !== event.toStatus)
+      .map((event) => ({
+        status: event.toStatus,
+        at: event.createdAt.toISOString(),
+      })),
     distribution: null,
     rejectionReason: row.rejectionReason,
   };

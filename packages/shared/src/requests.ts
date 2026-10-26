@@ -1,5 +1,24 @@
 import { z } from 'zod';
 import { RequestStatus } from './enums.js';
+import { submitRequestSchema } from './public.js';
+
+export const correctRequestSchema = submitRequestSchema
+  .pick({
+    fullName: true,
+    contactNumber: true,
+    barangay: true,
+    city: true,
+    province: true,
+    householdSize: true,
+  })
+  .extend({
+    householdSize: submitRequestSchema.shape.householdSize.unwrap().nullable(),
+    expectedUpdatedAt: z.string().datetime(),
+    reason: z.string().trim().min(1).max(1000),
+  })
+  .strict();
+
+export type CorrectRequestInput = z.infer<typeof correctRequestSchema>;
 
 export const REQUEST_TRANSITIONS = {
   PENDING: ['UNDER_REVIEW', 'CANCELLED'],
@@ -122,6 +141,7 @@ export const assistanceRequestDtoSchema = z.object({
   possibleDuplicate: z.boolean(),
   emailVerified: z.boolean(),
   submittedAt: z.string(),
+  updatedAt: z.string().optional(),
   reviewedAt: z.string().nullable(),
   approvedAt: z.string().nullable(),
   items: z.array(requestedItemDtoSchema),

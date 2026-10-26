@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './routes/router';
 import './styles/index.css';
 import { Toaster } from './components/ui/sonner';
+import { ChatWidget } from './features/chat/ChatWidget';
 
 // One factory so a cache key is never typed twice (rules.md §6).
 export const queryKeys = {
@@ -22,6 +23,7 @@ createRoot(container).render(
     <SessionQueryProvider>
       <MotionConfig reducedMotion="user">
         <App />
+        <ChatWidget />
       </MotionConfig>
     </SessionQueryProvider>
     <Toaster />

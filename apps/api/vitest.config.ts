@@ -1,5 +1,9 @@
 import { defineConfig } from 'vitest/config';
 
+delete process.env.OPENROUTER_API_KEY;
+delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+delete process.env.GEMINI_MODEL;
+
 export default defineConfig({
   test: {
     environment: 'node',

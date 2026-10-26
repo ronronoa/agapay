@@ -77,6 +77,57 @@ afterEach(() => {
   clearSession();
 });
 describe('SupportPage', () => {
+  it.each([false, true])(
+    'sends with Enter for personnel=%s using an icon-only named button',
+    async (personnel) => {
+      vi.mocked(apiFetch).mockImplementation((path, options) =>
+        Promise.resolve(
+          path.endsWith('/messages') && options?.method === 'POST'
+            ? { data: { ...message, body: 'Keyboard message' } }
+            : result(path),
+        ),
+      );
+      show(personnel);
+      const input = await screen.findByLabelText('Message');
+      fireEvent.change(input, { target: { value: 'Keyboard message' } });
+      const button = screen.getByRole('button', { name: 'Send message' });
+      expect(button).toHaveTextContent('');
+      expect(button).toHaveAttribute('title', 'Send message');
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => {
+        const write = vi.mocked(apiFetch).mock.calls.find(([path]) => path.endsWith('/messages'));
+        expect(write?.[0]).toBe(`/api/v1/support/conversations/${id}/messages`);
+        expect(write?.[1]?.method).toBe('POST');
+        expect(write?.[1]?.body).toMatchObject({ body: 'Keyboard message' });
+      });
+      await waitFor(() => expect(input).toHaveValue(''));
+    },
+  );
+
+  it('preserves multiline entry and does not send modified, composing, repeated, or empty Enter', async () => {
+    show();
+    const input = await screen.findByLabelText('Message');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: 'First line' } });
+    expect(fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })).toBe(true);
+    fireEvent.change(input, { target: { value: 'First line\nSecond line' } });
+    for (const modifiers of [
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+      { isComposing: true },
+      { keyCode: 229 },
+      { repeat: true },
+    ]) {
+      fireEvent.keyDown(input, { key: 'Enter', ...modifiers });
+    }
+    expect(input).toHaveValue('First line\nSecond line');
+    expect(
+      vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith('/messages')),
+    ).toHaveLength(0);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it('returns to the inbox and restores the selected conversation draft', async () => {
     show(true);
     const input = await screen.findByLabelText('Message');
@@ -128,11 +179,12 @@ describe('SupportPage', () => {
     const input = await screen.findByLabelText('Message');
     fireEvent.change(input, { target: { value: 'Pending message' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-    const pending = screen.getByRole('button', { name: 'Saving…' });
+    const pending = screen.getByRole('button', { name: 'Sending…' });
     expect(pending).toBeDisabled();
     expect(pending).toHaveAttribute('aria-busy', 'true');
     expect(input).toBeDisabled();
     fireEvent.click(pending);
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(
       vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith('/messages')),
     ).toHaveLength(1);

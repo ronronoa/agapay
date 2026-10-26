@@ -5,6 +5,7 @@ import type * as ApiClientModule from '../../lib/api-client';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { CampaignsPage } from './CampaignsPage';
 import { apiFetch } from '../../lib/api-client';
+import { setUser } from '../../lib/session';
 import type { CampaignDto } from '@agapay/shared';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
@@ -57,6 +58,16 @@ let submittedBody: unknown = null;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setUser({
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    name: 'Admin fixture',
+    email: 'admin@example.invalid',
+    role: 'ADMIN',
+    phone: null,
+    emailVerified: true,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00Z',
+  });
   campaigns = [campaign()];
   submittedBody = null;
   vi.mocked(apiFetch).mockImplementation(
@@ -68,6 +79,16 @@ beforeEach(() => {
       if (path.endsWith('/image')) {
         return Promise.resolve({ data: campaign({ coverImageUrl: '/uploads/campaigns/x.png' }) });
       }
+      for (const [action, status] of [
+        ['activate', 'ACTIVE'],
+        ['complete', 'COMPLETED'],
+        ['archive', 'ARCHIVED'],
+      ] as const) {
+        if (path.endsWith(`/${action}`) && options?.method === 'POST')
+          return Promise.resolve({ data: campaign({ status }) });
+      }
+      const detail = campaigns.find((row) => path === `/api/v1/campaigns/${row.id}`);
+      if (detail) return Promise.resolve({ data: detail });
       if (path.startsWith('/api/v1/campaigns')) {
         return Promise.resolve({
           data: { items: campaigns, page: 1, pageSize: 100, total: campaigns.length },
@@ -89,6 +110,117 @@ function renderPage(): ReturnType<typeof render> {
     </QueryClientProvider>,
   );
 }
+
+describe('campaign grid and management', () => {
+  it('holds confirmation while completion is pending and sends the displayed version', async () => {
+    const version = '2026-10-25T01:00:00.000Z';
+    campaigns = [campaign({ updatedAt: version })];
+    const fallback = vi.mocked(apiFetch).getMockImplementation();
+    if (!fallback) throw new Error('Missing fixture');
+    let finish: ((value: unknown) => void) | undefined;
+    vi.mocked(apiFetch).mockImplementation((path, options) =>
+      path.endsWith('/complete')
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : fallback(path, options),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage campaign' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Complete' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, complete' }));
+    expect(screen.getByRole('button', { name: 'Working…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(apiFetch).toHaveBeenCalledWith(`/api/v1/campaigns/${campaign().id}/complete`, {
+      method: 'POST',
+      body: { expectedUpdatedAt: version },
+    });
+    campaigns = [campaign({ status: 'COMPLETED' })];
+    finish?.({ data: campaigns[0] });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Campaign completed.'));
+  });
+
+  it('renders image cards with a recoverable missing-image state', async () => {
+    campaigns = [campaign({ coverImageUrl: '/uploads/campaigns/fixture.png' })];
+    const view = renderPage();
+    await screen.findByText('Typhoon Relief');
+    expect(screen.getByRole('article')).toBeInTheDocument();
+    const image = view.container.querySelector('img');
+    if (!image) throw new Error('Missing campaign image');
+    fireEvent.error(image);
+    expect(screen.getByText('No campaign image')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage campaign' })).toBeEnabled();
+  });
+
+  it('filters immediately and pages the server-side result', async () => {
+    renderPage();
+    await screen.findByText('Typhoon Relief');
+    fireEvent.change(screen.getByLabelText('Search campaigns'), { target: { value: 'Flood' } });
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'ACTIVE' } });
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/api/v1/campaigns?page=1&pageSize=12&q=Flood&status=ACTIVE',
+      ),
+    );
+    expect(screen.queryByRole('button', { name: 'Apply filters' })).not.toBeInTheDocument();
+  });
+
+  it('lets staff read cards but hides management and protects General Pool', async () => {
+    setUser({
+      id: 'staff',
+      name: 'Staff fixture',
+      email: 'staff@example.invalid',
+      role: 'STAFF',
+      phone: null,
+      emailVerified: true,
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    campaigns = [campaign({ name: 'General Pool', isSystem: true })];
+    renderPage();
+    await screen.findByText('General Pool');
+    expect(screen.queryByRole('button', { name: 'Add Campaign' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Actions for/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'View campaign' }));
+    await screen.findByRole('dialog', { name: 'General Pool' });
+    expect(screen.queryByRole('button', { name: 'Edit campaign' })).not.toBeInTheDocument();
+  });
+
+  it('shows closure blockers and prevents confirmation until work is resolved', async () => {
+    campaigns = [campaign({ closureBlockers: [{ blocking: 'requests', count: 2 }] })];
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage campaign' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Complete' }));
+    await screen.findByRole('dialog', { name: 'Complete this campaign?' });
+    expect(screen.getByRole('button', { name: 'Yes, complete' })).toBeDisabled();
+    expect(screen.getByText(/Resolve first: 2 unresolved requests/)).toBeInTheDocument();
+  });
+
+  it('saves an existing campaign without creating a duplicate', async () => {
+    const fallback = vi.mocked(apiFetch).getMockImplementation();
+    if (!fallback) throw new Error('Missing fixture');
+    vi.mocked(apiFetch).mockImplementation((path, options) =>
+      options?.method === 'PATCH'
+        ? Promise.resolve({ data: campaign({ name: 'Updated Relief' }) })
+        : fallback(path, options),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage campaign' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit campaign' }));
+    fireEvent.change(await screen.findByLabelText('Campaign name *'), {
+      target: { value: 'Updated Relief' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Campaign updated.'));
+    expect(
+      vi
+        .mocked(apiFetch)
+        .mock.calls.filter(
+          ([path, options]) => path === '/api/v1/campaigns' && options?.method === 'POST',
+        ),
+    ).toHaveLength(0);
+  });
+});
 
 describe('CampaignsPage create dialog', () => {
   async function openAndFill() {
@@ -247,7 +379,8 @@ describe('CampaignsPage activation', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Draft Drive')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage campaign' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Activate' }));
     expect(screen.getByText('Activate this campaign?')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByText('Activate this campaign?')).toBeNull());
@@ -255,7 +388,8 @@ describe('CampaignsPage activation', () => {
     const notCalled = vi.mocked(apiFetch).mock.calls.some(([path]) => path.endsWith('/activate'));
     expect(notCalled).toBe(false);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage campaign' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Activate' }));
     fireEvent.click(screen.getByRole('button', { name: 'Yes, activate' }));
 
     await waitFor(() => {
@@ -266,9 +400,7 @@ describe('CampaignsPage activation', () => {
         );
       expect(called).toBe(true);
     });
-    await waitFor(() =>
-      expect(toast.success).toHaveBeenCalledWith('Campaign "Draft Drive" is now active.'),
-    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Campaign activated.'));
   });
 
   it('offers no activation for an already active campaign', async () => {

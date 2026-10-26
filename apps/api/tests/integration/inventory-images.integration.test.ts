@@ -139,6 +139,7 @@ describe('inventory photo upload', () => {
         : await request(app).get(item.imageUrl).set('X-Forwarded-For', uniqueIp());
     expect(served?.status).toBe(200);
     expect(served?.headers['content-type']).toContain('image/png');
+    expect(served?.headers['cross-origin-resource-policy']).toBe('cross-origin');
   });
 
   it('replaces the photo and removes the old file', async () => {

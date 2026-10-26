@@ -9,7 +9,7 @@ import { LoginPage } from './LoginPage';
 import { VerifyEmailPage } from './VerifyEmailPage';
 import { ForgotPasswordPage } from './ForgotPasswordPage';
 import { ResetPasswordPage } from './ResetPasswordPage';
-import { apiFetch } from '../../lib/api-client';
+import { apiFetch, ApiClientError } from '../../lib/api-client';
 import { toast } from 'sonner';
 import { clearSession } from '../../lib/session';
 
@@ -258,9 +258,50 @@ describe('VerifyEmailPage', () => {
     expect(screen.getByText('This confirmation link is incomplete.')).toBeInTheDocument();
     expect(vi.mocked(apiFetch)).not.toHaveBeenCalled();
   });
+
+  it('offers a neutral resend without confirming that an account exists', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined);
+    renderWith(<VerifyEmailPage />, '/verify-email');
+    fireEvent.change(screen.getByLabelText('Email address for verification'), {
+      target: { value: 'unknown@example.invalid' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Resend verification' }));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'If the account still needs verification, a new email is queued.',
+      ),
+    );
+    expect(apiFetch).toHaveBeenCalledWith('/api/v1/auth/resend-verification', {
+      method: 'POST',
+      body: { email: 'unknown@example.invalid' },
+    });
+  });
 });
 
 describe('ForgotPasswordPage', () => {
+  it('keeps an unsuccessful recovery draft and prevents duplicate pending sends', async () => {
+    let reject: ((error: Error) => void) | undefined;
+    vi.mocked(apiFetch).mockImplementation(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    renderWith(<ForgotPasswordPage />);
+    fireEvent.change(screen.getByLabelText('Email Address'), {
+      target: { value: 'fixture@example.invalid' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }));
+    const button = await screen.findByRole('button', { name: 'Sending…' });
+    expect(button).toBeDisabled();
+    expect(screen.getByLabelText('Email Address')).toBeDisabled();
+    fireEvent.click(button);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+    reject?.(new Error('Offline'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledOnce());
+    expect(screen.getByLabelText('Email Address')).toHaveValue('fixture@example.invalid');
+  });
+
   it('answers identically without leaking account existence', async () => {
     vi.mocked(apiFetch).mockResolvedValue({});
     renderWith(<ForgotPasswordPage />);
@@ -281,6 +322,9 @@ describe('ResetPasswordPage', () => {
     fireEvent.change(screen.getByLabelText('New Password'), {
       target: { value: 'brand-new-password-9' },
     });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), {
+      target: { value: 'brand-new-password-9' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     await waitFor(() => expect(screen.getByText(/Password changed/)).toBeInTheDocument());
     expect(vi.mocked(apiFetch)).toHaveBeenCalledWith(
@@ -289,5 +333,66 @@ describe('ResetPasswordPage', () => {
         body: { token: 'tok12345678901234567890', password: 'brand-new-password-9' },
       }),
     );
+  });
+
+  it('blocks mismatched passwords without submitting', async () => {
+    renderWith(<ResetPasswordPage />, '/reset-password?token=tok12345678901234567890');
+    fireEvent.change(screen.getByLabelText('New Password'), {
+      target: { value: 'brand-new-password-9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), {
+      target: { value: 'different-password-9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText('Passwords do not match.')).toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it('provides recovery and invitation guidance for incomplete links', () => {
+    renderWith(<ResetPasswordPage />, '/reset-password');
+    expect(screen.getByText('This reset link is incomplete.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Request a new reset link' })).toHaveAttribute(
+      'href',
+      '/forgot-password',
+    );
+    expect(screen.getByText(/ask an administrator to regenerate/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change password' })).not.toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it('handles expired invitations without repeated invalid submissions', async () => {
+    vi.mocked(apiFetch).mockRejectedValue(
+      new ApiClientError('CONFLICT', 'Expired', 409, undefined, undefined),
+    );
+    renderWith(<ResetPasswordPage />, '/reset-password?token=tok12345678901234567890');
+    for (const label of ['New Password', 'Confirm Password'])
+      fireEvent.change(screen.getByLabelText(label), { target: { value: 'brand-new-password-9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText(/This password link cannot be used/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change password' })).not.toBeInTheDocument();
+    expect(toast.error).toHaveBeenCalledOnce();
+  });
+
+  it('disables password controls while pending and preserves the draft after a network failure', async () => {
+    let reject: ((error: Error) => void) | undefined;
+    vi.mocked(apiFetch).mockImplementation(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    renderWith(<ResetPasswordPage />, '/reset-password?token=tok12345678901234567890');
+    for (const label of ['New Password', 'Confirm Password'])
+      fireEvent.change(screen.getByLabelText(label), { target: { value: 'brand-new-password-9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    const button = await screen.findByRole('button', { name: 'Saving…' });
+    expect(button).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Show password' })).toBeDisabled();
+    fireEvent.click(button);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+    reject?.(new Error('Offline'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledOnce());
+    expect(screen.getByLabelText('New Password')).toHaveValue('brand-new-password-9');
+    expect(screen.getByRole('button', { name: 'Change password' })).toBeEnabled();
   });
 });

@@ -73,6 +73,7 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
   const [page, setPage] = useState(1);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [busy, setBusy] = useState(false);
+  const sending = useRef(false);
   const [error, setError] = useState('');
   const [closing, setClosing] = useState<{ status: 'OPEN' | 'CLOSED'; revision: number } | null>(
     null,
@@ -164,13 +165,15 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
       });
   }, [selected, latest, visible, client, readRetry, atBottom, closing]);
   const draft = drafts[selected];
+  const composerDisabled = busy || (personnel && detail.data?.data.status === 'CLOSED');
   async function send() {
-    if (!selected || busy) return;
+    if (!selected || composerDisabled || sending.current) return;
     const parsed = sendSupportMessageSchema.safeParse(draft);
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? 'Enter a message.');
       return;
     }
+    sending.current = true;
     setBusy(true);
     setError('');
     try {
@@ -195,6 +198,7 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
           : 'Message could not be sent. Retry with the same draft.',
       );
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   }
@@ -595,12 +599,29 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                   <label className="block text-sm font-medium" htmlFor="support-message">
                     Message
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="relative flex items-center">
                     <Textarea
                       id="support-message"
+                      className="min-h-16 pr-16"
+                      aria-describedby="support-message-help"
                       value={draft?.body ?? ''}
                       maxLength={4000}
-                      disabled={busy || (personnel && detail.data.data.status === 'CLOSED')}
+                      disabled={composerDisabled}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key !== 'Enter' ||
+                          event.shiftKey ||
+                          event.ctrlKey ||
+                          event.altKey ||
+                          event.metaKey ||
+                          event.nativeEvent.isComposing ||
+                          event.nativeEvent.keyCode === 229
+                        )
+                          return;
+                        event.preventDefault();
+                        if (!event.repeat && !composerDisabled && draft?.body.trim())
+                          event.currentTarget.form?.requestSubmit();
+                      }}
                       onChange={(event) => {
                         setError('');
                         setDrafts((previous) => ({
@@ -615,12 +636,11 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
 
                     <Button
                       type="submit"
-                      className="min-h-11"
-                      disabled={
-                        busy ||
-                        !draft?.body.trim() ||
-                        (personnel && detail.data.data.status === 'CLOSED')
-                      }
+                      size="icon"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full"
+                      disabled={composerDisabled || !draft?.body.trim()}
+                      aria-label={busy ? 'Sending…' : error ? 'Retry send' : 'Send message'}
+                      title={busy ? 'Sending…' : error ? 'Retry send' : 'Send message'}
                       aria-busy={busy}
                     >
                       {busy ? (
@@ -628,12 +648,12 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
                       ) : (
                         <Send aria-hidden="true" data-icon="inline-start" />
                       )}
-                      {busy ? 'Saving…' : error ? 'Retry send' : 'Send message'}
                     </Button>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <p className="text-xs text-text-muted">
-                      {draft?.body.length ?? 0}/4000 · Drafts stay here while Messages is open.
+                    <p id="support-message-help" className="text-xs text-text-muted">
+                      {draft?.body.length ?? 0}/4000 · Enter to send · Shift+Enter for a new line.{' '}
+                      Drafts stay here while Messages is open.
                     </p>
                   </div>
                   {!personnel && detail.data.data.status === 'CLOSED' && (

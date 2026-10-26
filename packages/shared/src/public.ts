@@ -101,6 +101,7 @@ export type TrackRequestResponse = z.infer<typeof trackRequestResponseSchema>;
 
 export const publicCampaignListQuerySchema = z
   .object({
+    q: z.string().trim().max(200).optional(),
     calamityType: z
       .enum([
         CalamityType.TYPHOON,
@@ -124,6 +125,7 @@ export const publicCampaignDtoSchema = z.object({
   name: z.string(),
   slug: z.string(),
   description: z.string(),
+  coverImageUrl: z.string().nullable().optional(),
   calamityType: z.string(),
   status: z.string(),
   startDate: z.string(),

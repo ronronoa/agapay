@@ -19,3 +19,4 @@ export * from './reports.js';
 export * from './status-messages.js';
 export * from './users.js';
 export * from './support.js';
+export * from './chat.js';

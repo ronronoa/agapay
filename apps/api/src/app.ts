@@ -28,6 +28,7 @@ import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { notificationsRouter } from './modules/notifications/notification.routes.js';
 import { uploadRoot } from './modules/inventory/inventory.upload.js';
+import { chatRouter } from './modules/chat/chat.routes.js';
 
 export function createApp() {
   const app = express();
@@ -110,10 +111,12 @@ export function createApp() {
   app.use('/api/v1/dashboard', dashboardRouter);
   app.use('/api/v1/notifications/emails', notificationsRouter);
   app.use('/api/v1', healthRouter);
+  app.use('/api/v1/chat', chatRouter);
 
-  // Inventory display photos only: random unguessable names, no listing, no
-  // dotfiles. The root resolves per request so tests can isolate uploads.
+  // Public campaign/inventory photos may be embedded by the separately hosted
+  // frontend. Keep Helmet's stricter default for API responses.
   app.use('/uploads', (req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     express.static(uploadRoot(), { index: false, dotfiles: 'deny' })(req, res, next);
   });
 

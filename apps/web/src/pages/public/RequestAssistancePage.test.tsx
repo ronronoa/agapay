@@ -62,11 +62,11 @@ beforeEach(() => {
   });
 });
 
-function renderPage(): ReturnType<typeof render> {
+function renderPage(entry = '/request-assistance'): ReturnType<typeof render> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/request-assistance']}>
+      <MemoryRouter initialEntries={[entry]}>
         <RequestAssistancePage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -107,6 +107,22 @@ function fillStepTwo(): void {
 }
 
 describe('RequestAssistancePage', () => {
+  it('applies reviewed goods while leaving identity, consent and submission to the visitor', async () => {
+    const fields = { campaignId: campaign.id, items: [{ itemTypeId: foodItem.id, quantity: 2 }] };
+    renderPage(
+      `/request-assistance?${new URLSearchParams({ campaign: campaign.id, goods: JSON.stringify(fields) })}`,
+    );
+    await screen.findByRole('option', { name: 'San Isidro' });
+    expect(screen.getByLabelText('Full name *')).toHaveValue('');
+    await fillStepOne();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
+    expect(await screen.findByLabelText('Relief campaign *')).toHaveValue(campaign.id);
+    fireEvent.click(screen.getByText('Food'));
+    expect(screen.getByRole('checkbox', { name: /Food Pack/ })).toBeChecked();
+    expect(vi.mocked(apiFetch).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(
+      false,
+    );
+  });
   it('opens on personal information with a progress indicator and no role toggle', () => {
     renderPage();
     expect(screen.getByText('Request relief assistance')).toBeInTheDocument();

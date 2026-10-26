@@ -120,6 +120,47 @@ beforeEach(() => {
 });
 
 describe('RequestsPage', () => {
+  it('validates corrections and retains entered details when saving fails', async () => {
+    respondWith([request({ contactNumber: '09171234567', updatedAt: '2026-09-01T00:00:00.000Z' })]);
+    const normal = vi.mocked(apiFetch).getMockImplementation();
+    vi.mocked(apiFetch).mockImplementation((path, options) =>
+      path.endsWith('/correct')
+        ? Promise.reject(
+            new ApiClientError(
+              'BUSINESS_RULE_VIOLATION',
+              'Household limit exceeded.',
+              422,
+              undefined,
+              undefined,
+            ),
+          )
+        : (normal?.(path, options) ?? Promise.reject(new Error('Missing fixture'))),
+    );
+    renderPage();
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Correct details' }));
+    fireEvent.change(screen.getByLabelText('Full name'), {
+      target: { value: 'Corrected fixture' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save corrections' }));
+    await screen.findByText('String must contain at least 1 character(s)');
+    expect(vi.mocked(apiFetch).mock.calls.some(([path]) => path.endsWith('/correct'))).toBe(false);
+    fireEvent.change(screen.getByLabelText('Reason for correction'), {
+      target: { value: 'Confirmed details' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save corrections' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Household limit exceeded.'));
+    expect(screen.getByLabelText('Full name')).toHaveValue('Corrected fixture');
+    expect(screen.getByLabelText('Reason for correction')).toHaveValue('Confirmed details');
+  });
+
+  it('hides corrections for approved requests', async () => {
+    respondWith([request({ status: 'APPROVED' })]);
+    renderPage();
+    await openReview();
+    expect(screen.queryByRole('button', { name: 'Correct details' })).not.toBeInTheDocument();
+  });
+
   it('retains a failed approval note for retry and renders errors in red', async () => {
     respondWith([request({ status: 'UNDER_REVIEW' })]);
     const normal = vi.mocked(apiFetch).getMockImplementation();

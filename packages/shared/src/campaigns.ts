@@ -77,6 +77,7 @@ export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
 
 export const updateCampaignSchema = z
   .object({
+    expectedUpdatedAt: z.string().datetime().optional(),
     name: z.string().trim().min(3).max(120).optional(),
     description: z.string().trim().min(1).max(5_000).optional(),
     calamityType: z
@@ -97,11 +98,21 @@ export const updateCampaignSchema = z
     priorityItems: z.array(priorityItemInputSchema).max(200).optional(),
   })
   .strict()
-  .refine((value) => Object.keys(value).length > 0, {
+  .refine((value) => Object.keys(value).some((key) => key !== 'expectedUpdatedAt'), {
     message: 'Provide at least one field to change.',
   });
 
 export type UpdateCampaignInput = z.infer<typeof updateCampaignSchema>;
+
+export const campaignActionSchema = z
+  .object({
+    expectedUpdatedAt: z.string().datetime().optional(),
+  })
+  .strict();
+export const campaignBlockerSchema = z.object({
+  blocking: z.enum(['donations', 'requests', 'events', 'allocations', 'reservedGoods']),
+  count: z.number().int().nonnegative(),
+});
 
 export const campaignAreaSchema = z.object({
   id: z.string(),
@@ -129,6 +140,8 @@ export const campaignSchema = z.object({
   endDate: z.string().nullable(),
   coverImageUrl: z.string().nullable(),
   createdAt: z.string(),
+  updatedAt: z.string().optional(),
+  closureBlockers: z.array(campaignBlockerSchema).optional(),
   areas: z.array(campaignAreaSchema).default([]),
   priorityItems: z.array(campaignPriorityItemSchema).default([]),
   donationCount: z.number().default(0),

@@ -83,6 +83,7 @@ function toPublicCampaign(row: CampaignDto): PublicCampaignDto {
       province: area.province,
     })),
     priorityItems: row.priorityItems,
+    coverImageUrl: row.coverImageUrl,
   };
 }
 
@@ -94,7 +95,7 @@ publicRouter.get('/campaigns', async (req, res) => {
   const result = await listCampaigns({
     status: CampaignStatus.ACTIVE,
     calamityType: parsed.data.calamityType,
-    q: undefined,
+    q: parsed.data.q,
     page: parsed.data.page,
     pageSize: parsed.data.pageSize,
   });

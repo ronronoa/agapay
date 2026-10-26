@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@agapay/shared": "*",
+    "@ai-sdk/google": "4.0.80",
     "@openrouter/ai-sdk-provider": "^3.1.0",
     "@prisma/client": "^6.1.0",
     "@types/multer": "^2.3.0",

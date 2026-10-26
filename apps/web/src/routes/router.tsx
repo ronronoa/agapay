@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { Activity, LayoutDashboard, Megaphone, MessageSquare, Settings } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
+import { PublicCampaignLayout } from '../components/layout/PublicCampaignLayout';
 import { AdminShell } from '../components/layout/AdminShell';
 import { AuthGate } from '../components/auth/AuthGate';
 import { CampaignsPage } from '../pages/admin/CampaignsPage';
@@ -200,13 +201,18 @@ const router = createBrowserRouter([
   },
 
   {
+    element: <PublicCampaignLayout />,
+    children: [
+      { path: '/campaigns', element: <PublicCampaignsPage /> },
+      { path: '/campaigns/:slug', element: <PublicCampaignDetailPage /> },
+    ],
+  },
+  {
     path: '/',
     element: <AppShell />,
     children: [
       { path: 'about', element: <NotImplementedPage title="About" /> },
       { path: 'how-it-works', element: <NotImplementedPage title="How It Works" /> },
-      { path: 'campaigns', element: <PublicCampaignsPage /> },
-      { path: 'campaigns/:slug', element: <PublicCampaignDetailPage /> },
 
       { path: 'forbidden', element: <ForbiddenPage /> },
       { path: '*', element: <NotFoundPage /> },

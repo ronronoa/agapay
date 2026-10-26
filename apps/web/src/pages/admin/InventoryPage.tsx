@@ -9,6 +9,7 @@ import {
   type InventoryDto,
 } from '@agapay/shared';
 import { ApiClientError, apiFetch } from '../../lib/api-client';
+import { imageUrl } from '../../lib/image-url';
 import { getUser, subscribe } from '../../lib/session';
 import { useApiQuery } from '../../lib/use-api-query';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -31,7 +32,6 @@ import { toast } from 'sonner';
 
 const PAGE_SIZE = 20;
 const MOVEMENT_PAGE_SIZE = 10;
-const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? '';
 const MAX_PHOTO_MB = 5;
 const PHOTO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
@@ -378,7 +378,7 @@ export function InventoryPage() {
         <span className="flex items-center gap-2">
           {row.imageUrl === null ? null : (
             <img
-              src={`${API_BASE}${row.imageUrl}`}
+              src={imageUrl(row.imageUrl)}
               alt=""
               className="h-10 w-10 rounded-md object-cover"
             />

@@ -29,6 +29,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { Spinner } from '../../components/ui/spinner';
 import { fetchAll } from '../../lib/fetch-all';
 import { FieldGroup, FieldLayout } from '../../components/ui/field';
+import { CorrectRequestForm } from './CorrectRequestForm';
 
 const PAGE_SIZE = 20;
 const REQUEST_STATUSES = [
@@ -42,7 +43,7 @@ const REQUEST_STATUSES = [
 ] as const;
 const REQUEST_FLAGS = ['duplicate', 'outsideArea', 'unverifiedEmail'] as const;
 
-type RequestAction = 'claim' | 'release' | 'approve' | 'reject' | 'cancel';
+type RequestAction = 'claim' | 'release' | 'approve' | 'reject' | 'cancel' | 'correct';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: 'Pending',
@@ -479,6 +480,8 @@ export function RequestsPage() {
                 <dd>{`${selected.barangay}, ${selected.city}, ${selected.province}`}</dd>
                 <dt className="text-text-muted">Campaign</dt>
                 <dd>{selected.campaignName}</dd>
+                <dt className="text-text-muted">Household size</dt>
+                <dd>{selected.householdSize ?? 'Unknown'}</dd>
                 <dt className="text-text-muted">Tracking</dt>
                 <dd>{selected.trackingNumber ?? '—'}</dd>
               </dl>
@@ -523,7 +526,12 @@ export function RequestsPage() {
                   {selected.timeline.map((event, index) => (
                     <li key={`${event.at}-${index}`} className="flex justify-between gap-2">
                       <span>
-                        {event.fromStatus ?? 'New'} → {event.toStatus}
+                        {event.fromStatus === event.toStatus
+                          ? 'Details corrected'
+                          : `${event.fromStatus ?? 'New'} → ${event.toStatus}`}
+                        {event.fromStatus === event.toStatus && event.note ? (
+                          <span className="block text-text-muted">{event.note}</span>
+                        ) : null}
                       </span>
                       <span className="text-text-muted">{formatDate(event.at)}</span>
                     </li>
@@ -531,6 +539,11 @@ export function RequestsPage() {
                 </ul>
               </div>
               <div className="flex flex-wrap gap-2">
+                {(selected.status === 'PENDING' || selected.status === 'UNDER_REVIEW') && (
+                  <Button type="button" variant="accent" onClick={() => openAction('correct')}>
+                    Correct details
+                  </Button>
+                )}
                 {selected.status === 'PENDING' ? (
                   <>
                     <Button type="button" onClick={() => openAction('claim')}>
@@ -603,6 +616,22 @@ export function RequestsPage() {
                 </Button>
               </DialogFooter>
             </div>
+          ) : null}
+
+          {selected !== null && action === 'correct' ? (
+            <CorrectRequestForm
+              key={selected.id}
+              request={selected}
+              pending={mutation.isPending}
+              onBack={() => setAction(null)}
+              onSave={(input) =>
+                submitAction(
+                  `/api/v1/assistance-requests/${encodeURIComponent(selected.id)}/correct`,
+                  input,
+                  'Request details corrected.',
+                )
+              }
+            />
           ) : null}
 
           {selected !== null && action === 'approve' ? (

@@ -84,6 +84,14 @@ export async function list(query: ItemTypeListQuery): Promise<{
   };
 }
 
+export async function activeByIds(ids: readonly string[]): Promise<ItemTypeDto[]> {
+  const rows = await prisma.itemType.findMany({
+    where: { id: { in: [...ids] }, isActive: true },
+    select: itemTypeSelect,
+  });
+  return rows.map(toDto);
+}
+
 export async function create(input: CreateItemTypeInput, actor: AuthContext): Promise<ItemTypeDto> {
   const lowStockThreshold = input.lowStockThreshold ?? (await getSettings()).lowStockDefault;
   const existing = await prisma.itemType.findUnique({

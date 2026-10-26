@@ -1,7 +1,11 @@
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { campaignListResponseSchema, donationResponseSchema } from '@agapay/shared';
+import {
+  campaignListResponseSchema,
+  donationResponseSchema,
+  readChatSuggestion,
+} from '@agapay/shared';
 import type { SubmitDonationInput } from '@agapay/shared';
 import { ApiClientError, apiFetch } from '../../lib/api-client';
 import { useApiQuery } from '../../lib/use-api-query';
@@ -22,6 +26,7 @@ export function DonatePage() {
     campaignListResponseSchema,
   );
   const preselected = params.get('campaign') ?? '';
+  const suggestion = readChatSuggestion(params.get('goods'));
 
   function onSubmit(input: SubmitDonationInput): Promise<void> {
     setSubmitError(null);
@@ -82,7 +87,19 @@ export function DonatePage() {
                   preferredDate: '',
                   preferredNote: '',
                   notes: '',
-                  items: [],
+                  items:
+                    suggestion &&
+                    campaigns.some((campaign) => campaign.id === suggestion.campaignId) &&
+                    suggestion.campaignId === preselected
+                      ? suggestion.items.map((item) => ({
+                          itemTypeId: item.itemTypeId,
+                          quantity: item.quantity,
+                          description: '',
+                          customName: '',
+                          expiryDate: '',
+                          checked: true,
+                        }))
+                      : [],
                 }}
                 submitLabel="Submit donation"
                 pendingLabel="Submitting…"

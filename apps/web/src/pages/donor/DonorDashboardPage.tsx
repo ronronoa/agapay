@@ -249,20 +249,6 @@ export function DonorDashboardPage() {
           );
         }}
       </AsyncBoundary>
-
-      <div className="fixed bottom-6 right-6">
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title="The assistant arrives in a later release"
-          aria-label="Agapay AI assistant, coming soon"
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-primary-subtle px-5 py-3 text-sm font-semibold text-surface disabled:cursor-not-allowed disabled:opacity-80"
-        >
-          AGAPAY AI
-          <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">Soon</span>
-        </button>
-      </div>
     </div>
   );
 }

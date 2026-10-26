@@ -12,6 +12,7 @@ export interface ConfirmDialogProps {
   onCancel: () => void;
   pending?: boolean;
   pendingLabel?: string;
+  confirmDisabled?: boolean;
 }
 
 // One confirmation shell for irreversible or session-ending actions, so no
@@ -26,6 +27,7 @@ export function ConfirmDialog({
   onCancel,
   pending = false,
   pendingLabel = 'Working…',
+  confirmDisabled = false,
 }: ConfirmDialogProps) {
   return (
     <Dialog
@@ -40,7 +42,12 @@ export function ConfirmDialog({
         <Button type="button" variant="accent" disabled={pending} onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button type="button" disabled={pending} aria-busy={pending} onClick={onConfirm}>
+        <Button
+          type="button"
+          disabled={pending || confirmDisabled}
+          aria-busy={pending}
+          onClick={onConfirm}
+        >
           {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
           {pending ? pendingLabel : confirmLabel}
         </Button>
