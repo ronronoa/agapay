@@ -16,6 +16,7 @@ const CSRF = { 'x-requested-with': 'agapay' } as const;
 const GOOD_PASSWORD = 'correct horse battery';
 
 let seq = 0;
+const personnelIds: string[] = [];
 const uniqueEmail = (): string => `auth-${process.pid}-${seq++}@example.com`;
 
 let ipSeq = 0;
@@ -40,17 +41,21 @@ function pinnedPost(path: string, ip: string): request.Test {
   return request(app).post(path).set('X-Forwarded-For', ip);
 }
 
-async function createUser(options: { verified?: boolean; active?: boolean } = {}): Promise<string> {
+async function createUser(
+  options: { verified?: boolean; active?: boolean; role?: 'DONOR' | 'ADMIN' | 'SUPER_ADMIN' } = {},
+): Promise<string> {
   const email = uniqueEmail();
-  await prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       name: 'Ana Reyes',
       email,
       passwordHash: await hashPassword(GOOD_PASSWORD),
       emailVerifiedAt: options.verified === true ? new Date() : null,
       isActive: options.active !== false,
+      role: options.role ?? 'DONOR',
     },
   });
+  if (user.role !== 'DONOR') personnelIds.push(user.id);
   return email;
 }
 
@@ -80,6 +85,11 @@ function accessTokenOf(res: request.Response): string {
 }
 
 afterAll(async () => {
+  // Keep auth fixtures from interfering with the separate first-Super-Admin bootstrap suite.
+  await prisma.user.updateMany({
+    where: { id: { in: personnelIds } },
+    data: { role: 'DONOR', isActive: false },
+  });
   await prisma.$disconnect();
 });
 
@@ -361,37 +371,55 @@ describe('me', () => {
 });
 
 describe('profile and password', () => {
-  it('updates the name and phone', async () => {
-    const email = await createUser();
-    const login = await loginAs(email);
+  it.each(['DONOR', 'ADMIN', 'SUPER_ADMIN'] as const)(
+    'updates the name and phone for %s',
+    async (role) => {
+      const email = await createUser({ role });
+      const login = await loginAs(email);
 
-    const res = await patch('/api/v1/auth/me')
-      .set('Authorization', `Bearer ${accessTokenOf(login)}`)
-      .send({ name: 'Ana Reyes Santos', phone: '09171234567' });
+      const res = await patch('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${accessTokenOf(login)}`)
+        .send({ name: 'Ana Reyes Santos', phone: '09171234567' });
 
-    expect(res.status).toBe(200);
-    const body = authUserResponseSchema.parse(res.body).data;
-    expect(body).toMatchObject({ name: 'Ana Reyes Santos', phone: '09171234567' });
-  });
+      expect(res.status).toBe(200);
+      const body = authUserResponseSchema.parse(res.body).data;
+      expect(body).toMatchObject({ name: 'Ana Reyes Santos', phone: '09171234567' });
+      const cleared = await patch('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${accessTokenOf(login)}`)
+        .send({ name: 'Ana Reyes Santos' });
+      expect(cleared.status).toBe(200);
+      expect(authUserResponseSchema.parse(cleared.body).data.phone).toBeNull();
+    },
+  );
 
-  it('changes the password and ends every existing session', async () => {
-    const email = await createUser();
-    const login = await loginAs(email);
+  it.each(['DONOR', 'ADMIN', 'SUPER_ADMIN'] as const)(
+    'changes the password and ends existing sessions for %s',
+    async (role) => {
+      const email = await createUser({ role });
+      const login = await loginAs(email);
 
-    const res = await post('/api/v1/auth/change-password')
-      .set('Authorization', `Bearer ${accessTokenOf(login)}`)
-      .send({ currentPassword: GOOD_PASSWORD, newPassword: 'a brand new secret' });
+      const res = await post('/api/v1/auth/change-password')
+        .set('Authorization', `Bearer ${accessTokenOf(login)}`)
+        .send({ currentPassword: GOOD_PASSWORD, newPassword: 'a brand new secret' });
 
-    expect(res.status).toBe(204);
+      expect(res.status).toBe(204);
 
-    const live = await prisma.refreshToken.count({
-      where: { user: { email }, revokedAt: null },
-    });
-    expect(live).toBe(0);
+      const live = await prisma.refreshToken.count({
+        where: { user: { email }, revokedAt: null },
+      });
+      expect(live).toBe(0);
+      expect(
+        (await get('/api/v1/auth/me').set('Authorization', `Bearer ${accessTokenOf(login)}`))
+          .status,
+      ).toBe(401);
+      expect(
+        (await post('/api/v1/auth/refresh').set(CSRF).set('Cookie', cookieOf(login))).status,
+      ).toBe(401);
 
-    expect((await loginAs(email)).status).toBe(401);
-    expect((await loginAs(email, 'a brand new secret')).status).toBe(200);
-  });
+      expect((await loginAs(email)).status).toBe(401);
+      expect((await loginAs(email, 'a brand new secret')).status).toBe(200);
+    },
+  );
 
   it('refuses a password change when the current password is wrong', async () => {
     const email = await createUser();
@@ -402,6 +430,51 @@ describe('profile and password', () => {
       .send({ currentPassword: 'not it', newPassword: 'a brand new secret' });
 
     expect(res.status).toBe(401);
+  });
+
+  it('does not let concurrent login or refresh restore a session after a password change', async () => {
+    const email = await createUser({ role: 'ADMIN' });
+    const login = await loginAs(email);
+    const [changed, refreshed, signedIn] = await Promise.all([
+      post('/api/v1/auth/change-password')
+        .set('Authorization', `Bearer ${accessTokenOf(login)}`)
+        .send({ currentPassword: GOOD_PASSWORD, newPassword: 'another strong password' }),
+      post('/api/v1/auth/refresh').set(CSRF).set('Cookie', cookieOf(login)),
+      loginAs(email),
+    ]);
+    expect(changed.status).toBe(204);
+    for (const response of [refreshed, signedIn]) {
+      expect([200, 401]).toContain(response.status);
+      if (response.status === 200) {
+        expect(
+          (await get('/api/v1/auth/me').set('Authorization', `Bearer ${accessTokenOf(response)}`))
+            .status,
+        ).toBe(401);
+        expect(
+          (await post('/api/v1/auth/refresh').set(CSRF).set('Cookie', cookieOf(response))).status,
+        ).toBe(401);
+      }
+    }
+    expect(await prisma.refreshToken.count({ where: { user: { email }, revokedAt: null } })).toBe(
+      0,
+    );
+  });
+
+  it('allows only one concurrent change using the same current password', async () => {
+    const email = await createUser({ role: 'SUPER_ADMIN' });
+    const login = await loginAs(email);
+    const responses = await Promise.all(
+      ['first changed password', 'second changed password'].map((newPassword) =>
+        post('/api/v1/auth/change-password')
+          .set('Authorization', `Bearer ${accessTokenOf(login)}`)
+          .send({ currentPassword: GOOD_PASSWORD, newPassword }),
+      ),
+    );
+    expect(responses.filter((res) => res.status === 204)).toHaveLength(1);
+    expect(responses.filter((res) => res.status === 409 || res.status === 401)).toHaveLength(1);
+    expect(await prisma.refreshToken.count({ where: { user: { email }, revokedAt: null } })).toBe(
+      0,
+    );
   });
 });
 
