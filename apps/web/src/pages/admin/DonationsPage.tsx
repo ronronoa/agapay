@@ -511,6 +511,10 @@ export function DonationsPage() {
                 <dd>{selected.donorEmail}</dd>
                 <dt className="text-text-muted">Campaign</dt>
                 <dd>{selected.campaignName}</dd>
+                <dt className="text-text-muted">Pickup address</dt>
+                <dd className="whitespace-pre-wrap break-words">
+                  {selected.pickupAddress || 'Not provided'}
+                </dd>
                 <dt className="text-text-muted">Submitted</dt>
                 <dd>{formatDate(selected.submittedAt)}</dd>
                 <dt className="text-text-muted">Preferred date</dt>

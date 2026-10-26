@@ -9,6 +9,9 @@ import { setUser } from '../../lib/session';
 import type { CampaignDto } from '@agapay/shared';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+vi.mock('../../lib/psgc', () => ({
+  usePsgcList: () => ({ data: [], isFetching: false, isError: false, refetch: vi.fn() }),
+}));
 
 vi.mock('../../lib/api-client', async () => {
   const actual = await vi.importActual<typeof ApiClientModule>('../../lib/api-client');
@@ -331,6 +334,7 @@ describe('CampaignsPage create dialog', () => {
     });
     fireEvent.change(screen.getByLabelText('Start date *'), { target: { value: '2026-11-01' } });
     fireEvent.change(screen.getByLabelText('End date *'), { target: { value: '2026-11-30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
     fireEvent.change(screen.getByLabelText('Area 1 barangay'), {
       target: { value: 'San Isidro' },
     });
@@ -354,6 +358,7 @@ describe('CampaignsPage create dialog', () => {
     });
     fireEvent.change(screen.getByLabelText('Start date *'), { target: { value: '2026-11-01' } });
     fireEvent.change(screen.getByLabelText('End date *'), { target: { value: '2026-11-30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
     fireEvent.change(screen.getByLabelText('Area 1 barangay'), { target: { value: 'San Isidro' } });
     fireEvent.change(screen.getByLabelText('Area 1 city'), { target: { value: 'Quezon City' } });
     fireEvent.change(screen.getByLabelText('Area 1 province'), {

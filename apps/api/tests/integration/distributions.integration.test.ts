@@ -574,6 +574,109 @@ describe('M4 scheduling safeguards', () => {
     ).data.items;
     expect(rows.some((e) => e.id === event)).toBe(true);
   });
+  it('edits all event fields and rejects closed campaign targets', async () => {
+    const event = await makeEvent('DISTRIBUTION', `Editable ${RUN}`);
+    const target = await prisma.campaign.create({
+      data: {
+        name: `Target ${RUN}`,
+        slug: `event-target-${RUN}`,
+        description: 'Event move fixture',
+        calamityType: 'OTHER',
+        status: 'ACTIVE',
+        startDate: new Date(),
+      },
+    });
+    const revision = await eventRevision(event);
+    const response = await patchEvent(event, {
+      revision,
+      campaignId: target.id,
+      type: 'COLLECTION',
+      title: 'Updated collection',
+      description: 'Updated description',
+      startAt: '2026-11-02T01:00:00Z',
+      endAt: '2026-11-02T04:00:00Z',
+      location: 'New hall',
+      capacity: null,
+    });
+    expect(response.status).toBe(200);
+    const current = parse(response, calendarEventResponseSchema).data;
+    expect(current).toMatchObject({
+      campaignId: target.id,
+      type: 'COLLECTION',
+      title: 'Updated collection',
+      description: 'Updated description',
+      location: 'New hall',
+      capacity: null,
+      revision: revision + 1,
+      syncStatus: 'NOT_SYNCED',
+    });
+    expect((await patchEvent(event, { revision, title: 'Stale' })).status).toBe(409);
+    const closed = await prisma.campaign.create({
+      data: {
+        name: `Closed ${RUN}`,
+        slug: `closed-target-${RUN}`,
+        description: 'Closed fixture',
+        calamityType: 'OTHER',
+        status: 'COMPLETED',
+        startDate: new Date(),
+      },
+    });
+    expect(
+      (await patchEvent(event, { revision: current.revision, campaignId: closed.id })).status,
+    ).toBe(422);
+  });
+  it('protects assigned and historical event identity and serializes new assignments', async () => {
+    const linkedEvent = await makeEvent('DISTRIBUTION', `Linked identity ${RUN}`);
+    const linked = await allocate(await approvedRequest(), linkedEvent);
+    expect(linked.status).toBe(201);
+    expect(
+      (
+        await patchEvent(linkedEvent, {
+          revision: await eventRevision(linkedEvent),
+          type: 'COLLECTION',
+        })
+      ).status,
+    ).toBe(409);
+    const linkedId = parse(linked, distributionResponseSchema).data.id;
+    expect((await staffPost(`/api/v1/distributions/${linkedId}/cancel`, {})).status).toBe(200);
+    expect(
+      (
+        await patchEvent(linkedEvent, {
+          revision: await eventRevision(linkedEvent),
+          type: 'COLLECTION',
+        })
+      ).status,
+    ).toBe(409);
+    const event = await makeEvent('DISTRIBUTION', `Identity race ${RUN}`);
+    const requestId = await approvedRequest();
+    const revision = await eventRevision(event);
+    const [changed, allocated] = await Promise.all([
+      patchEvent(event, { revision, type: 'COLLECTION', capacity: null }),
+      allocate(requestId, event),
+    ]);
+    expect([200, 409]).toContain(changed.status);
+    if (changed.status === 200) {
+      expect(allocated.status).toBe(422);
+    } else {
+      expect(allocated.status).toBe(201);
+      const distribution = parse(allocated, distributionResponseSchema).data;
+      expect(
+        (
+          await patchEvent(event, {
+            revision: await eventRevision(event),
+            campaignId: '00000000-0000-4000-8000-000000000000',
+          })
+        ).status,
+      ).toBe(404);
+      expect((await staffPost(`/api/v1/distributions/${distribution.id}/cancel`, {})).status).toBe(
+        200,
+      );
+      expect(
+        (await patchEvent(event, { revision: await eventRevision(event), type: 'COLLECTION' }))
+          .status,
+      ).toBe(409);
+    }
+  });
   it('rejects duplicate goods and incomplete or empty handovers without changing stock', async () => {
     const id = await approvedRequest();
     const event = await makeEvent('DISTRIBUTION', `Validation ${RUN}`);

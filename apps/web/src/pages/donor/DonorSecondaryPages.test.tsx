@@ -53,7 +53,7 @@ function renderWith(ui: ReactElement): ReturnType<typeof render> {
 }
 
 describe('DonorCampaignPage', () => {
-  it('lists drives with a live detail link and a labelled join placeholder', async () => {
+  it('lists drives with working detail and donation links', async () => {
     renderWith(<DonorCampaignPage />);
     await waitFor(() =>
       expect(screen.getByText('Typhoon Amihan Relief Drive')).toBeInTheDocument(),
@@ -62,9 +62,9 @@ describe('DonorCampaignPage', () => {
       'href',
       '/campaigns/typhoon-amihan',
     );
-    expect(screen.getByRole('link', { name: 'Join Campaign' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Donate goods' })).toHaveAttribute(
       'href',
-      expect.stringContaining('/donate?campaign='),
+      `/donate?campaign=${campaign.id}`,
     );
   });
 });

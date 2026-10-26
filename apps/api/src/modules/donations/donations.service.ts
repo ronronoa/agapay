@@ -56,6 +56,7 @@ type DetailRow = {
   donorId: string;
   preferredDate: Date | null;
   preferredNote: string | null;
+  pickupAddress: string | null;
   notes: string | null;
   rejectionReason: string | null;
   submittedAt: Date;
@@ -88,6 +89,7 @@ function toDto(row: DetailRow): DonationDto {
     donorEmail: row.donor.email,
     preferredDate: row.preferredDate === null ? null : row.preferredDate.toISOString(),
     preferredNote: row.preferredNote,
+    pickupAddress: row.pickupAddress,
     notes: row.notes,
     rejectionReason: row.rejectionReason,
     items: row.items.map((item) => ({
@@ -205,6 +207,7 @@ export async function submit(
           status: DonationStatus.PENDING,
           preferredDate: input.preferredDate ?? null,
           preferredNote: input.preferredNote ?? null,
+          pickupAddress: input.pickupAddress?.trim() || null,
           notes: input.notes ?? null,
           items: {
             create: input.items.map((item) => ({
@@ -307,6 +310,9 @@ export async function edit(
   }
 
   await prisma.$transaction(async (tx) => {
+    const locked = await lockDonation(tx, id);
+    if (locked.status !== DonationStatus.PENDING)
+      throw conflict('This donation changed. Refresh before editing.');
     if (input.items !== undefined) {
       await requireActiveItemTypes(
         tx,
@@ -326,14 +332,18 @@ export async function edit(
         });
       }
     }
-    await tx.donation.update({
-      where: { id },
+    const changed = await tx.donation.updateMany({
+      where: { id, status: DonationStatus.PENDING },
       data: {
         ...(input.preferredDate === undefined ? {} : { preferredDate: input.preferredDate }),
         ...(input.preferredNote === undefined ? {} : { preferredNote: input.preferredNote }),
+        ...(input.pickupAddress === undefined
+          ? {}
+          : { pickupAddress: input.pickupAddress?.trim() || null }),
         ...(input.notes === undefined ? {} : { notes: input.notes }),
       },
     });
+    if (!changed.count) throw conflict('This donation changed. Refresh before editing.');
     await writeAudit(tx, actor, {
       action: 'donation.edit',
       entityType: 'Donation',

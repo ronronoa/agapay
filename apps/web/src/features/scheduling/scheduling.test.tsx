@@ -8,6 +8,7 @@ import { DistributionsPage } from './DistributionsPage';
 import { fetchAll, localDate, manilaIso } from './shared';
 import { apiFetch } from '../../lib/api-client';
 import { toast } from 'sonner';
+import { updateCalendarEventSchema } from '@agapay/shared';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('../../lib/api-client', () => ({ apiFetch: vi.fn() }));
@@ -133,6 +134,21 @@ describe('M4 scheduling screens', () => {
     fireEvent.click(button);
     expect(await screen.findByRole('heading', { name: 'Existing collection' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Create event' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit event' }));
+    expect(within(screen.getByRole('dialog')).getByLabelText('Event type')).toBeEnabled();
+    expect(within(screen.getByRole('dialog')).getByLabelText('Campaign')).toBeEnabled();
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Event type'), {
+      target: { value: 'DONATION_DRIVE' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: /I reviewed/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save event' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    const patch = vi.mocked(apiFetch).mock.calls.find(([, options]) => options?.method === 'PATCH');
+    expect(updateCalendarEventSchema.parse(patch?.[1]?.body)).toMatchObject({
+      type: 'DONATION_DRIVE',
+      campaignId: campaign.id,
+      revision: 1,
+    });
   });
   it('opens the event form from a date and keeps accessible labels', async () => {
     show(<CalendarPage />);

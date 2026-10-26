@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 import type * as ApiClientModule from '../../lib/api-client';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { PublicCampaignsPage } from './PublicCampaignsPage';
+import { DonorCampaignPage } from '../donor/DonorCampaignPage';
 import { apiFetch } from '../../lib/api-client';
 
 vi.mock('../../lib/api-client', async () => {
@@ -31,9 +32,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-function renderPage(): ReturnType<typeof render> {
+function renderPage(audience: 'public' | 'donor' = 'public'): ReturnType<typeof render> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const ui: ReactElement = <PublicCampaignsPage />;
+  const ui: ReactElement = audience === 'donor' ? <DonorCampaignPage /> : <PublicCampaignsPage />;
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/campaigns']}>
@@ -48,6 +49,21 @@ function renderPage(): ReturnType<typeof render> {
 }
 
 describe('PublicCampaignsPage', () => {
+  it('reuses the campaign grid with donor-specific donation links', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      data: { items: [campaign], page: 1, pageSize: 12, total: 1 },
+    });
+    renderPage('donor');
+    await screen.findByText(campaign.name);
+    expect(
+      within(screen.getByRole('main')).getByRole('link', { name: 'Donate goods' }),
+    ).toHaveAttribute('href', `/donate?campaign=${campaign.id}`);
+    expect(screen.getByAltText('')).toHaveAttribute(
+      'src',
+      expect.stringContaining('/uploads/campaigns/cover.png'),
+    );
+    expect(screen.queryByRole('button', { name: 'Add Campaign' })).not.toBeInTheDocument();
+  });
   it('lists active campaigns with a request path', async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       data: { items: [campaign], page: 1, pageSize: 100, total: 1 },

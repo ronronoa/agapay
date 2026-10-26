@@ -7,6 +7,7 @@ import type * as ApiClientModule from '../../lib/api-client';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { DonorDonationDetailPage } from './DonorDonationDetailPage';
 import { apiFetch, ApiClientError } from '../../lib/api-client';
+import { updateDonationSchema } from '@agapay/shared';
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -28,6 +29,7 @@ const donation = {
   donorEmail: 'juan@example.com',
   preferredDate: null,
   preferredNote: null,
+  pickupAddress: '24 Test Street, Test City',
   notes: null,
   rejectionReason: null,
   items: [
@@ -121,6 +123,11 @@ describe('DonorDonationDetailPage actions', () => {
     renderDetail();
     await waitFor(() => expect(screen.getByText('DON-2026-000182')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Edit donation' }));
+    expect(screen.getByLabelText('Pickup address')).toHaveValue('24 Test Street, Test City');
+    expect(screen.getByLabelText('Relief campaign')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Pickup address'), {
+      target: { value: 'Updated pickup address' },
+    });
     await waitFor(() =>
       expect(screen.getByRole('checkbox', { name: /Food Packs/ })).toBeInTheDocument(),
     );
@@ -134,6 +141,10 @@ describe('DonorDonationDetailPage actions', () => {
           (options as { method?: string })?.method === 'PATCH',
       );
     expect(patch).toBeDefined();
+    expect(patch?.[1]?.body).not.toHaveProperty('campaignId');
+    expect(updateDonationSchema.parse(patch?.[1]?.body).pickupAddress).toBe(
+      'Updated pickup address',
+    );
   });
 
   it('cancels behind a confirmation dialog', async () => {

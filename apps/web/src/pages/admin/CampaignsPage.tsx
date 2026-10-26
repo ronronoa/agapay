@@ -451,6 +451,7 @@ export function CampaignsPage() {
                     setEditing(viewing);
                     setViewing(null);
                   }}
+                  variant="outline"
                 >
                   Edit campaign
                 </Button>

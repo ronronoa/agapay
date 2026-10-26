@@ -33,6 +33,7 @@ import { Badge } from '../../components/ui/badge';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Spinner } from '../../components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
+import { CampaignAreaFields } from './CampaignAreaFields';
 
 const MAX_IMAGE_MB = 5;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -190,12 +191,6 @@ export function CreateCampaignDialog({
   const types = itemTypes.data?.data.items ?? [];
   const detailsLocked = submitting || created !== null;
 
-  function patchArea(index: number, key: keyof AreaRow, value: string) {
-    setState((current) => ({
-      ...current,
-      areas: current.areas.map((row, i) => (i === index ? { ...row, [key]: value } : row)),
-    }));
-  }
   function patchPriority(index: number, key: keyof PriorityRow, value: string) {
     setState((current) => ({
       ...current,
@@ -559,54 +554,28 @@ export function CreateCampaignDialog({
               <FieldSet disabled={detailsLocked} className="md:col-span-2">
                 <FieldLegend>Affected areas</FieldLegend>
                 <FieldDescription>
-                  Enter complete barangay, city or municipality, and province rows. These determine
-                  who can request aid.
+                  Choose province (or Metro Manila), city or municipality, then barangay using PSGC
+                  Cloud. Manual entry is available if a place is missing or the service is
+                  unavailable. These areas determine who can request aid.
                 </FieldDescription>
                 {state.areas.map((area, index) => (
-                  <FieldGroup
+                  <CampaignAreaFields
                     key={index}
-                    className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
-                  >
-                    <Field>
-                      <Label htmlFor={`campaign-barangay-${index}`}>Barangay</Label>
-                      <Input
-                        id={`campaign-barangay-${index}`}
-                        aria-label={`Area ${index + 1} barangay`}
-                        placeholder="Barangay"
-                        maxLength={120}
-                        value={area.barangay}
-                        onChange={(event) => patchArea(index, 'barangay', event.target.value)}
-                      />
-                    </Field>
-                    <Field>
-                      <Label htmlFor={`campaign-city-${index}`}>City or municipality</Label>
-                      <Input
-                        id={`campaign-city-${index}`}
-                        aria-label={`Area ${index + 1} city`}
-                        placeholder="City or municipality"
-                        maxLength={120}
-                        value={area.city}
-                        onChange={(event) => patchArea(index, 'city', event.target.value)}
-                      />
-                    </Field>
-                    <Field>
-                      <Label htmlFor={`campaign-province-${index}`}>Province</Label>
-                      <Input
-                        id={`campaign-province-${index}`}
-                        aria-label={`Area ${index + 1} province`}
-                        placeholder="Province"
-                        maxLength={120}
-                        value={area.province}
-                        onChange={(event) => patchArea(index, 'province', event.target.value)}
-                      />
-                    </Field>
-                    <RemoveRow
-                      label={`Remove area ${index + 1}`}
-                      onRemove={() =>
-                        setState((c) => ({ ...c, areas: c.areas.filter((_, i) => i !== index) }))
-                      }
-                    />
-                  </FieldGroup>
+                    area={area}
+                    index={index}
+                    onChange={(next) =>
+                      setState((current) => ({
+                        ...current,
+                        areas: current.areas.map((row, i) => (i === index ? next : row)),
+                      }))
+                    }
+                    onRemove={() =>
+                      setState((current) => ({
+                        ...current,
+                        areas: current.areas.filter((_, i) => i !== index),
+                      }))
+                    }
+                  />
                 ))}
                 <Button
                   variant="outline"

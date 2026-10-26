@@ -291,6 +291,8 @@ function EventForm({
     try {
       const f = new FormData(form);
       const changes = {
+        campaignId: formText(f, 'campaignId'),
+        type,
         title: formText(f, 'title'),
         description: formText(f, 'description'),
         startAt: manilaIso(formText(f, 'startAt')),
@@ -300,11 +302,7 @@ function EventForm({
       };
       const body = event
         ? updateCalendarEventSchema.parse({ ...changes, revision: event.revision })
-        : createCalendarEventSchema.parse({
-            ...changes,
-            campaignId: formText(f, 'campaignId'),
-            type,
-          });
+        : createCalendarEventSchema.parse(changes);
       await apiFetch(`/api/v1/calendar/events${event ? `/${event.id}` : ''}`, {
         method: event ? 'PATCH' : 'POST',
         body,
@@ -340,7 +338,10 @@ function EventForm({
         </Button>
       </DialogClose>
       <DialogTitle className="pr-12">{event ? 'Edit event' : 'Create event'}</DialogTitle>
-      <DialogDescription>Schedule in Philippine time. Events may overlap.</DialogDescription>
+      <DialogDescription>
+        Schedule in Philippine time. Events may overlap. Type and campaign can change only when no
+        donation or distribution records are linked.
+      </DialogDescription>
       <form
         className="mt-5 grid gap-4"
         onSubmit={(e) => {
@@ -364,7 +365,6 @@ function EventForm({
                 name="type"
                 className={selectClass}
                 value={type}
-                disabled={!!event}
                 onChange={(e) => {
                   const t = eventTypes.find((t) => t === e.target.value);
                   if (t) setType(t);
@@ -380,7 +380,6 @@ function EventForm({
                 name="campaignId"
                 className={selectClass}
                 required
-                disabled={!!event}
                 defaultValue={event?.campaignId ?? ''}
               >
                 <option value="">Choose campaign</option>
@@ -440,8 +439,8 @@ function EventForm({
                 onChange={(e) => setConfirmed(e.target.checked)}
               />
               I reviewed the {event.outstandingCollections} collections and{' '}
-              {event.outstandingDistributions} distributions affected. Time or location changes will
-              email their recipients.
+              {event.outstandingDistributions} distributions affected. Changes to title,
+              description, time or location will email their recipients.
             </label>
           )}
           {error && (
