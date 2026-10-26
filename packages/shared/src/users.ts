@@ -50,7 +50,24 @@ export const updateUserSchema = z
 
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 
-export const adminUserSchema = authUserSchema.extend({ lastLoginAt: z.string().nullable() });
+export const manualVerificationMethodSchema = z.enum([
+  'IN_PERSON',
+  'PHONE_CALL',
+  'TRUSTED_CHANNEL',
+]);
+export const manualEmailVerificationSchema = z
+  .object({ method: manualVerificationMethodSchema })
+  .strict();
+export type ManualEmailVerificationInput = z.infer<typeof manualEmailVerificationSchema>;
+export const adminUserSchema = authUserSchema.extend({
+  lastLoginAt: z.string().nullable(),
+  emailVerifiedAt: z.string().nullable().optional(),
+  verificationSource: z
+    .enum(['ADMIN', 'EMAIL_LINK', 'PERSONNEL_LINK', 'UNKNOWN'])
+    .nullable()
+    .optional(),
+  verificationMethod: manualVerificationMethodSchema.nullable().optional(),
+});
 
 export const adminUserResponseSchema = z.object({ data: adminUserSchema });
 export const personnelInvitationSchema = z.object({

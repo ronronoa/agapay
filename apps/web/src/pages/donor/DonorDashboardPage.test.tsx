@@ -67,13 +67,6 @@ describe('DonorDashboardPage', () => {
     expect(screen.getByText('+2 this month')).toBeInTheDocument();
   });
 
-  it('labels the assistant as coming soon instead of faking it', () => {
-    renderPage();
-    const button = screen.getByRole('button', { name: /agapay ai/i });
-    expect(button).toBeDisabled();
-    expect(screen.getByText('Soon')).toBeInTheDocument();
-  });
-
   it('links the donation card at the live campaign list', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument());

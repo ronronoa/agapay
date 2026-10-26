@@ -1,7 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
-import { adminUserResponseSchema, type UserRole } from '@agapay/shared';
+import { adminUserResponseSchema, userListResponseSchema, type UserRole } from '@agapay/shared';
 import { prisma } from '../../src/lib/prisma.js';
 import { createApp } from '../../src/app.js';
 import { systemClock } from '../../src/lib/clock.js';
@@ -9,6 +9,7 @@ import { hashPassword, hashToken } from '../../src/modules/auth/password.js';
 import { signAccessToken } from '../../src/modules/auth/tokens.js';
 import { resendVerification } from '../../src/modules/auth/auth.service.js';
 import { verifyDonorEmail } from '../../src/modules/users/users.service.js';
+import * as audit from '../../src/modules/audit/audit.service.js';
 
 const app = createApp();
 const ids: string[] = [];
@@ -34,7 +35,8 @@ async function account(role: UserRole, active = true): Promise<Actor> {
 const verify = (actor: Actor, id: string) =>
   request(app)
     .post(`/api/v1/users/${id}/verify-email`)
-    .set('Authorization', `Bearer ${actor.token}`);
+    .set('Authorization', `Bearer ${actor.token}`)
+    .send({ method: 'PHONE_CALL' });
 beforeAll(async () => {
   passwordHash = await hashPassword('manual verification test password');
   admin = await account('ADMIN');
@@ -69,7 +71,14 @@ describe('manual donor email verification', () => {
         await prisma.auditLog.findFirst({
           where: { entityId: target.id, action: 'user.email.verify' },
         }),
-      ).toMatchObject({ actorId: actor.id, metadata: { method: 'manual' } });
+      ).toMatchObject({
+        actorId: actor.id,
+        metadata: { method: 'manual', offlineMethod: 'PHONE_CALL' },
+      });
+      expect(adminUserResponseSchema.parse(res.body).data).toMatchObject({
+        verificationSource: 'ADMIN',
+        verificationMethod: 'PHONE_CALL',
+      });
     },
   );
 
@@ -165,7 +174,147 @@ describe('manual donor email verification', () => {
     const manager = await account('ADMIN');
     await prisma.user.update({ where: { id: manager.id }, data: { role: 'STAFF' } });
     await expect(
-      verifyDonorEmail(target.id, { userId: manager.id, role: 'ADMIN' }, systemClock),
+      verifyDonorEmail(
+        target.id,
+        { method: 'IN_PERSON' },
+        { userId: manager.id, role: 'ADMIN' },
+        systemClock,
+      ),
     ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('requires a predefined ownership-check method without accepting private evidence', async () => {
+    const target = await account('DONOR');
+    for (const body of [
+      {},
+      { method: 'unknown' },
+      { method: 'IN_PERSON', evidence: 'private details' },
+    ]) {
+      expect(
+        (
+          await request(app)
+            .post(`/api/v1/users/${target.id}/verify-email`)
+            .set('Authorization', `Bearer ${admin.token}`)
+            .send(body)
+        ).status,
+      ).toBe(400);
+    }
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: target.id } })).emailVerifiedAt,
+    ).toBeNull();
+  });
+
+  async function listTarget(target: Actor) {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: user.email })
+      .set('Authorization', `Bearer ${admin.token}`);
+    return userListResponseSchema.parse(res.body).data.items.find((row) => row.id === target.id);
+  }
+
+  async function emailLink(target: Actor) {
+    const token = randomUUID();
+    const row = await prisma.authToken.create({
+      data: {
+        userId: target.id,
+        type: 'VERIFY_EMAIL',
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + 60000),
+      },
+    });
+    return { token, id: row.id };
+  }
+
+  it('displays email-link, manual legacy, and unknown legacy sources without guessing', async () => {
+    const linked = await account('DONOR');
+    const link = await emailLink(linked);
+    expect(
+      (await request(app).post('/api/v1/auth/verify-email').send({ token: link.token })).status,
+    ).toBe(200);
+    expect(await listTarget(linked)).toMatchObject({
+      verificationSource: 'EMAIL_LINK',
+      verificationMethod: null,
+    });
+    const legacy = await account('DONOR');
+    await prisma.user.update({ where: { id: legacy.id }, data: { emailVerifiedAt: new Date() } });
+    expect(await listTarget(legacy)).toMatchObject({ verificationSource: 'UNKNOWN' });
+    await prisma.auditLog.create({
+      data: {
+        actorId: admin.id,
+        entityType: 'User',
+        entityId: legacy.id,
+        action: 'user.email.verify',
+        metadata: { method: 'manual' },
+      },
+    });
+    expect(await listTarget(legacy)).toMatchObject({
+      verificationSource: 'ADMIN',
+      verificationMethod: null,
+    });
+  });
+
+  it('records one source when manual and email-link verification race', async () => {
+    const target = await account('DONOR');
+    const link = await emailLink(target);
+    const [manual, linked] = await Promise.all([
+      verify(admin, target.id),
+      request(app).post('/api/v1/auth/verify-email').send({ token: link.token }),
+    ]);
+    expect(manual.status).toBe(200);
+    expect([200, 409]).toContain(linked.status);
+    const events = await prisma.auditLog.findMany({
+      where: {
+        entityId: target.id,
+        action: { in: ['user.email.verify', 'user.email.verify.link'] },
+      },
+    });
+    expect(events).toHaveLength(1);
+    expect((await listTarget(target))?.verificationSource).toBe(
+      events[0]?.action === 'user.email.verify' ? 'ADMIN' : 'EMAIL_LINK',
+    );
+  });
+
+  it('rolls back email-link verification and token consumption if attribution cannot be recorded', async () => {
+    const target = await account('DONOR');
+    const link = await emailLink(target);
+    const spy = vi.spyOn(audit, 'write').mockRejectedValueOnce(new Error('Audit unavailable'));
+    try {
+      expect(
+        (await request(app).post('/api/v1/auth/verify-email').send({ token: link.token })).status,
+      ).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: target.id } })).emailVerifiedAt,
+    ).toBeNull();
+    expect(
+      (await prisma.authToken.findUniqueOrThrow({ where: { id: link.id } })).usedAt,
+    ).toBeNull();
+  });
+
+  it('attributes personnel password acceptance to the personnel link', async () => {
+    const target = await account('STAFF');
+    const token = randomUUID();
+    await prisma.authToken.create({
+      data: {
+        userId: target.id,
+        type: 'RESET_PASSWORD',
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + 60000),
+      },
+    });
+    expect(
+      (
+        await request(app)
+          .post('/api/v1/auth/reset-password')
+          .send({ token, password: 'a fresh personnel password' })
+      ).status,
+    ).toBe(204);
+    expect(await listTarget(target)).toMatchObject({
+      verificationSource: 'PERSONNEL_LINK',
+      emailVerified: true,
+    });
   });
 });

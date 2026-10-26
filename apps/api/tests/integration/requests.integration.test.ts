@@ -19,6 +19,7 @@ import { prisma } from '../../src/lib/prisma.js';
 import { createApp } from '../../src/app.js';
 import { hashPassword } from '../../src/modules/auth/password.js';
 import { verifyTurnstileToken } from '../../src/modules/public/turnstile.js';
+import * as audit from '../../src/modules/audit/audit.service.js';
 
 vi.mock('../../src/modules/public/turnstile.js', () => ({
   verifyTurnstileToken: vi.fn().mockResolvedValue(true),
@@ -491,5 +492,212 @@ describe('M3 assistance requests', () => {
     const res = await staffGet('/api/v1/assistance-requests/awaiting-stock');
     expect(res.status).toBe(200);
     expect(parse(res, assistanceRequestListResponseSchema).data.total).toBe(0);
+  });
+
+  async function correctionFixture(overrides: SubmitOverrides = {}) {
+    const submitted = parse(await submitPublic(overrides), submitRequestResponseSchema).data;
+    const row = await prisma.assistanceRequest.findUniqueOrThrow({
+      where: { referenceNumber: submitted.referenceNumber },
+    });
+    return {
+      row,
+      body: {
+        fullName: row.fullName,
+        contactNumber: row.contactNumber,
+        barangay: row.barangay,
+        city: row.city,
+        province: row.province,
+        householdSize: row.householdSize,
+        expectedUpdatedAt: row.updatedAt.toISOString(),
+        reason: 'Confirmed clerical correction',
+      },
+    };
+  }
+
+  it('corrects details, recalculates area/duplicate flags, and keeps audit metadata free of personal data', async () => {
+    const { row, body } = await correctionFixture({ contactNumber: '09170000111' });
+    const res = await staffPost(`/api/v1/assistance-requests/${row.id}/correct`, {
+      ...body,
+      fullName: 'Corrected fixture',
+      contactNumber: '09171234567',
+      barangay: 'Outside fixture',
+    });
+    expect(res.status).toBe(200);
+    const updated = parse(res, assistanceRequestResponseSchema).data;
+    expect(updated.fullName).toBe('Corrected fixture');
+    expect(updated.outsideCampaignArea).toBe(true);
+    expect(updated.possibleDuplicate).toBe(true);
+    expect(updated.email).toBe(row.email);
+    expect(updated.status).toBe('PENDING');
+    expect(updated.timeline.at(-1)?.note).toBe(
+      'Clerical correction: Confirmed clerical correction',
+    );
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: row.id, action: 'request.correct' },
+    });
+    expect(audit.metadata).toEqual({ changedFields: ['fullName', 'contactNumber', 'barangay'] });
+    expect(await prisma.emailNotification.count({ where: { relatedRequestId: row.id } })).toBe(2);
+    const tracked = await request(app)
+      .post('/api/v1/public/track')
+      .set('X-Forwarded-For', uniqueIp())
+      .send({ code: row.referenceNumber, email: row.email });
+    expect(tracked.status).toBe(200);
+    expect(JSON.stringify(tracked.body)).not.toContain('Confirmed clerical correction');
+  });
+
+  it('rejects email/campaign/item edits, invalid mobile numbers, and household cap violations without changes', async () => {
+    const { row, body } = await correctionFixture({
+      householdSize: 4,
+      itemTypeId: householdTypeId,
+      quantity: 8,
+    });
+    const path = `/api/v1/assistance-requests/${row.id}/correct`;
+    for (const extra of [
+      { email: 'other@example.com' },
+      { campaignId },
+      { items: [] },
+      { contactNumber: 'bad' },
+    ]) {
+      expect(
+        (await staffPost(path, { ...body, fullName: 'Changed fixture', ...extra })).status,
+      ).toBe(400);
+    }
+    expect((await staffPost(path, { ...body, householdSize: 1 })).status).toBe(422);
+    const stored = await prisma.assistanceRequest.findUniqueOrThrow({ where: { id: row.id } });
+    expect(stored.householdSize).toBe(4);
+    expect(stored.fullName).toBe(row.fullName);
+    expect(
+      await prisma.auditLog.count({ where: { entityId: row.id, action: 'request.correct' } }),
+    ).toBe(0);
+  });
+
+  it('allows personnel but denies donor and anonymous correction', async () => {
+    const { row, body } = await correctionFixture();
+    const path = `/api/v1/assistance-requests/${row.id}/correct`;
+    expect((await request(app).post(path).send(body)).status).toBe(401);
+    expect(
+      (await request(app).post(path).set('Authorization', `Bearer ${donor.token}`).send(body))
+        .status,
+    ).toBe(403);
+    for (const role of [UserRole.ADMIN, UserRole.SUPER_ADMIN]) {
+      const actor = await makeUser(role);
+      try {
+        const current = await staffDetail(row.id);
+        const res = await request(app)
+          .post(path)
+          .set('Authorization', `Bearer ${actor.token}`)
+          .set('X-Forwarded-For', uniqueIp())
+          .send({ ...body, fullName: `Fixture ${role}`, expectedUpdatedAt: current.updatedAt });
+        expect(res.status).toBe(200);
+      } finally {
+        // The bootstrap suite must start without a Super Admin fixture from this test.
+        if (role === UserRole.SUPER_ADMIN) {
+          await prisma.user.update({ where: { id: actor.id }, data: { role: UserRole.ADMIN } });
+        }
+      }
+    }
+  });
+
+  it('blocks corrections after review and anonymization', async () => {
+    for (const status of [
+      'APPROVED',
+      'SCHEDULED',
+      'DISTRIBUTED',
+      'REJECTED',
+      'CANCELLED',
+    ] as const) {
+      const { row, body } = await correctionFixture();
+      await prisma.assistanceRequest.update({
+        where: { id: row.id },
+        data: { status, rejectionReason: status === 'REJECTED' ? 'Fixture rejection' : null },
+      });
+      expect(
+        (
+          await staffPost(`/api/v1/assistance-requests/${row.id}/correct`, {
+            ...body,
+            fullName: 'Forbidden change',
+          })
+        ).status,
+      ).toBe(409);
+      expect((await staffDetail(row.id)).fullName).toBe(row.fullName);
+    }
+    const { row, body } = await correctionFixture();
+    await prisma.assistanceRequest.update({
+      where: { id: row.id },
+      data: { anonymizedAt: new Date() },
+    });
+    expect(
+      (
+        await staffPost(`/api/v1/assistance-requests/${row.id}/correct`, {
+          ...body,
+          fullName: 'Forbidden change',
+        })
+      ).status,
+    ).toBe(409);
+  });
+
+  it('allows only one concurrent correction from the same displayed version', async () => {
+    const { row, body } = await correctionFixture();
+    const path = `/api/v1/assistance-requests/${row.id}/correct`;
+    const results = await Promise.all([
+      staffPost(path, { ...body, fullName: 'First correction' }),
+      staffPost(path, { ...body, fullName: 'Second correction' }),
+    ]);
+    expect(results.map((res) => res.status).sort()).toEqual([200, 409]);
+    expect(
+      await prisma.auditLog.count({ where: { entityId: row.id, action: 'request.correct' } }),
+    ).toBe(1);
+  });
+
+  it('rolls back details and internal history if audit writing fails', async () => {
+    const { row, body } = await correctionFixture();
+    const historyCount = await prisma.requestStatusEvent.count({ where: { requestId: row.id } });
+    const spy = vi.spyOn(audit, 'write').mockRejectedValueOnce(new Error('Audit unavailable'));
+    try {
+      expect(
+        (
+          await staffPost(`/api/v1/assistance-requests/${row.id}/correct`, {
+            ...body,
+            fullName: 'Rollback fixture',
+          })
+        ).status,
+      ).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+    const stored = await prisma.assistanceRequest.findUniqueOrThrow({ where: { id: row.id } });
+    expect(stored.fullName).toBe(row.fullName);
+    expect(stored.updatedAt).toEqual(row.updatedAt);
+    expect(await prisma.requestStatusEvent.count({ where: { requestId: row.id } })).toBe(
+      historyCount,
+    );
+  });
+
+  it('serializes correction against approval without changing an approved request afterward', async () => {
+    const { row, body } = await correctionFixture();
+    expect((await staffPost(`/api/v1/assistance-requests/${row.id}/claim`, {})).status).toBe(200);
+    const current = await staffDetail(row.id);
+    const [correction, approval] = await Promise.all([
+      staffPost(`/api/v1/assistance-requests/${row.id}/correct`, {
+        ...body,
+        expectedUpdatedAt: current.updatedAt,
+        fullName: 'Racing correction',
+      }),
+      staffPost(`/api/v1/assistance-requests/${row.id}/approve`, {}),
+    ]);
+    expect(approval.status).toBe(200);
+    expect([200, 409]).toContain(correction.status);
+    const final = await staffDetail(row.id);
+    expect(final.status).toBe('APPROVED');
+    expect(final.fullName).toBe(correction.status === 200 ? 'Racing correction' : row.fullName);
+    expect(
+      (
+        await staffPost(`/api/v1/assistance-requests/${row.id}/correct`, {
+          ...body,
+          expectedUpdatedAt: final.updatedAt,
+          fullName: 'Too late',
+        })
+      ).status,
+    ).toBe(409);
   });
 });

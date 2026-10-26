@@ -11,7 +11,6 @@ import {
 import {
   Archive,
   CheckCircle2,
-  ImageOff,
   MoreHorizontal,
   Pencil,
   Play,
@@ -47,7 +46,7 @@ import { Dialog, DialogTitle, DialogDescription, DialogFooter } from '../../comp
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { CreateCampaignDialog } from './CreateCampaignDialog';
 import { ApiClientError, apiFetch } from '../../lib/api-client';
-import { imageUrl } from '../../lib/image-url';
+import { CampaignCover } from '../../components/ui/CampaignCover';
 
 type Action = 'activate' | 'complete' | 'archive' | 'delete';
 const ACTIONS = {
@@ -106,24 +105,6 @@ function allowed(campaign: CampaignDto, action: Action): boolean {
     Object.entries(CAMPAIGN_TRANSITIONS).find(([status]) => status === campaign.status)?.[1] ?? [];
   return targets.includes(ACTIONS[action].target);
 }
-function Cover({ campaign }: { campaign: CampaignDto }) {
-  const [failed, setFailed] = useState(false);
-  return campaign.coverImageUrl && !failed ? (
-    <img
-      src={imageUrl(campaign.coverImageUrl)}
-      alt=""
-      loading="lazy"
-      className="aspect-video w-full object-cover"
-      onError={() => setFailed(true)}
-    />
-  ) : (
-    <div className="flex aspect-video items-center justify-center gap-2 bg-surface-alt text-sm text-text-muted">
-      <ImageOff aria-hidden="true" className="size-5" />
-      No campaign image
-    </div>
-  );
-}
-
 export function CampaignsPage() {
   const client = useQueryClient();
   const user = useSyncExternalStore(subscribe, getUser, getUser);
@@ -289,7 +270,7 @@ export function CampaignsPage() {
           >
             {items.map((campaign) => (
               <Card key={campaign.id}>
-                <Cover key={campaign.coverImageUrl} campaign={campaign} />
+                <CampaignCover key={campaign.coverImageUrl} src={campaign.coverImageUrl} />
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
                     <StatusBadge

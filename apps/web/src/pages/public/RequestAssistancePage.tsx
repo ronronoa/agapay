@@ -6,6 +6,7 @@ import {
   publicCampaignListResponseSchema,
   publicItemTypeListResponseSchema,
   submitRequestSchema,
+  readChatSuggestion,
   type PublicItemTypeDto,
   type SubmitRequestInput,
 } from '@agapay/shared';
@@ -172,12 +173,45 @@ export function RequestAssistancePage() {
   const campaignsReady = !campaignsQuery.isPending && campaignsQuery.error === null;
   const noCampaigns = campaignsReady && campaigns.length === 0;
 
+  const preselectedCampaign = useRef<string | null>(null);
   useEffect(() => {
     const preselected = params.get('campaign');
-    if (preselected !== null && campaigns.some((campaign) => campaign.id === preselected)) {
+    if (
+      preselected !== null &&
+      preselectedCampaign.current !== preselected &&
+      campaigns.some((campaign) => campaign.id === preselected)
+    ) {
+      preselectedCampaign.current = preselected;
       setValue('campaignId', preselected);
     }
   }, [params, campaigns, setValue]);
+
+  const appliedSuggestion = useRef('');
+  useEffect(() => {
+    const raw = params.get('goods');
+    if (!raw || raw === appliedSuggestion.current || !campaigns.length || !catalog.length) return;
+    appliedSuggestion.current = raw;
+    const suggestion = readChatSuggestion(raw);
+    if (!suggestion || !campaigns.some((campaign) => campaign.id === suggestion.campaignId)) return;
+    const valid = suggestion.items.every((pick) => {
+      const item = catalog.find((row) => row.id === pick.itemTypeId);
+      return (
+        item &&
+        (item.maxPerRequest === null || pick.quantity <= item.maxPerRequest) &&
+        (item.perHouseholdMember === null || pick.quantity <= item.perHouseholdMember)
+      );
+    });
+    if (!valid) return;
+    setValue('campaignId', suggestion.campaignId);
+    setPicks(
+      Object.fromEntries(
+        suggestion.items.map((item) => [
+          item.itemTypeId,
+          { checked: true, quantity: item.quantity, customName: '' },
+        ]),
+      ),
+    );
+  }, [params, campaigns, catalog, setValue]);
 
   useEffect(() => {
     setValue(

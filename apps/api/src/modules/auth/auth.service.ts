@@ -33,6 +33,7 @@ import {
   verifyPassword,
 } from './password.js';
 import { signAccessToken } from './tokens.js';
+import { write as writeAudit } from '../audit/audit.service.js';
 
 const GENERIC_LOGIN_FAILURE = 'Email or password is incorrect.';
 const SESSION_EXPIRED = 'Your session has expired. Please sign in again.';
@@ -210,16 +211,48 @@ export async function verifyEmail(rawToken: string, clock: Clock): Promise<void>
   if (token.usedAt !== null) throw conflict('This link has already been used.');
   if (token.expiresAt <= now) throw conflict('This link has expired. Request a new one.');
 
-  const claimed = await prisma.authToken.updateMany({
-    where: { id: token.id, usedAt: null },
-    data: { usedAt: now },
-  });
-  if (claimed.count === 0) throw conflict('This link has already been used.');
-
-  await prisma.user.updateMany({
-    where: { id: token.userId, emailVerifiedAt: null },
-    data: { emailVerifiedAt: now },
-  });
+  await withRetry(() =>
+    prisma.$transaction(async (tx) => {
+      // Use the same user-before-token order as manual verification and resends.
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${token.userId} FOR UPDATE`;
+      const claimed = await tx.authToken.updateMany({
+        where: { id: token.id, usedAt: null },
+        data: { usedAt: now },
+      });
+      if (claimed.count === 0) throw conflict('This link has already been used.');
+      const changed = await tx.user.updateMany({
+        where: { id: token.userId, emailVerifiedAt: null },
+        data: { emailVerifiedAt: now },
+      });
+      if (changed.count === 1) {
+        const user = await tx.user.findUniqueOrThrow({
+          where: { id: token.userId },
+          select: { role: true },
+        });
+        await writeAudit(
+          tx,
+          { userId: token.userId, role: user.role },
+          {
+            action: 'user.email.verify.link',
+            entityType: 'User',
+            entityId: token.userId,
+          },
+        );
+      }
+      await tx.authToken.updateMany({
+        where: { userId: token.userId, type: AuthTokenType.VERIFY_EMAIL, usedAt: null },
+        data: { usedAt: now },
+      });
+      await tx.emailNotification.updateMany({
+        where: {
+          type: NotificationType.DONOR_VERIFY_EMAIL,
+          status: 'QUEUED',
+          dedupeKey: { startsWith: `verify-email:${token.userId}:` },
+        },
+        data: { status: 'SUPPRESSED' },
+      });
+    }, txOptions),
+  );
 }
 
 export async function resendVerification(email: string, clock: Clock): Promise<void> {
@@ -412,7 +445,7 @@ export async function resetPassword(input: ResetPasswordInput, clock: Clock): Pr
       if (claimed.count === 0) throw conflict('This link has already been used.');
 
       await tx.user.update({ where: { id: token.userId }, data: { passwordHash } });
-      await tx.user.updateMany({
+      const verified = await tx.user.updateMany({
         where: {
           id: token.userId,
           role: { in: ['SUPER_ADMIN', 'ADMIN', 'STAFF'] },
@@ -420,6 +453,21 @@ export async function resetPassword(input: ResetPasswordInput, clock: Clock): Pr
         },
         data: { emailVerifiedAt: now },
       });
+      if (verified.count === 1) {
+        const user = await tx.user.findUniqueOrThrow({
+          where: { id: token.userId },
+          select: { role: true },
+        });
+        await writeAudit(
+          tx,
+          { userId: token.userId, role: user.role },
+          {
+            action: 'user.invitation.accept',
+            entityType: 'User',
+            entityId: token.userId,
+          },
+        );
+      }
       await tx.refreshToken.updateMany({
         where: { userId: token.userId, revokedAt: null },
         data: { revokedAt: now },

@@ -14,6 +14,7 @@ import { Button, buttonVariants } from '../../components/ui/Button';
 import { Spinner } from '../../components/ui/spinner';
 import { AuthLayout } from './AuthLayout';
 import { PasswordInput } from './PasswordInput';
+import { VerificationResend } from './VerificationResend';
 
 export function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -197,6 +198,7 @@ export function RegisterPage() {
             Check <span className="break-all font-semibold text-text">{done}</span> for your
             confirmation link. Confirm your email before donating.
           </p>
+          <VerificationResend email={done} />
           <Link
             to="/login"
             className={buttonVariants({ size: 'lg', className: 'mt-8 w-full justify-between' })}

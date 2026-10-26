@@ -87,17 +87,28 @@ beforeEach(() => {
   });
 });
 
-function renderPage(): ReturnType<typeof render> {
+function renderPage(entry = '/donate'): ReturnType<typeof render> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui: ReactElement = <DonatePage />;
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>{ui}</MemoryRouter>
+      <MemoryRouter initialEntries={[entry]}>{ui}</MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
 describe('DonatePage', () => {
+  it('applies reviewed campaign and goods suggestions without submitting a pledge', async () => {
+    const fields = { campaignId: campaign.id, items: [{ itemTypeId: foodItem.id, quantity: 2 }] };
+    renderPage(
+      `/donate?${new URLSearchParams({ campaign: campaign.id, goods: JSON.stringify(fields) })}`,
+    );
+    expect(await screen.findByRole('checkbox', { name: /Food Pack/ })).toBeChecked();
+    expect(screen.getByLabelText('Relief campaign')).toHaveValue(campaign.id);
+    expect(vi.mocked(apiFetch).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(
+      false,
+    );
+  });
   it('submits a grouped pledge and shows the reference', async () => {
     renderPage();
     await waitFor(() =>

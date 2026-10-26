@@ -1,79 +1,89 @@
-import { useState } from 'react';
-import type { FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiClientError } from '../../lib/api-client';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { forgotPasswordSchema, type ForgotPasswordInput } from '@agapay/shared';
+import { toast } from 'sonner';
 import { forgotPassword } from '../../lib/auth-api';
-import { LandingHeader } from '../../components/landing/LandingHeader';
-import { LandingFooter } from '../../components/landing/LandingFooter';
+import { Button } from '../../components/ui/Button';
+import { Field, FieldGroup } from '../../components/ui/field';
 import { Input } from '../../components/ui/input';
+import { RecoveryLayout } from './RecoveryLayout';
 
 export function ForgotPasswordPage() {
-  const [email, setEmail] = useState('');
   const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  function onSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    void forgotPassword(email)
-      .then(() => setDone(true))
-      .catch((err: unknown) => {
-        setError(err instanceof ApiClientError ? err.message : 'Request failed. Please try again.');
-        setSubmitting(false);
-      });
+  const inFlight = useRef(false);
+  const {
+    control,
+    handleSubmit,
+    formState: { isSubmitting },
+  } = useForm<ForgotPasswordInput>({
+    resolver: zodResolver(forgotPasswordSchema),
+    defaultValues: { email: '' },
+  });
+  async function submit(values: ForgotPasswordInput) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await forgotPassword(values.email);
+      setDone(true);
+    } catch {
+      toast.error('Could not request a reset link. Wait and try again.');
+    } finally {
+      inFlight.current = false;
+    }
   }
-
   return (
-    <div className="min-h-screen bg-bg">
-      <LandingHeader />
-      <main className="mx-auto w-full max-w-xl px-4 py-10 sm:px-6">
-        <div className="rounded-xl border border-border bg-surface p-8 shadow-card">
-          <h1 className="font-display text-2xl font-bold tracking-tight">Forgot password</h1>
-          {done ? (
-            <p role="status" className="mt-2 text-sm text-text-muted">
-              If an account uses that address, a reset link is on its way. Check your inbox.
-            </p>
-          ) : (
-            <form onSubmit={onSubmit} noValidate className="mt-4 space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium">
-                  Email Address
-                </label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  aria-describedby={error === null ? undefined : 'forgot-error'}
-                />
-              </div>
-              {error === null ? null : (
-                <p id="forgot-error" role="alert" className="text-sm font-medium">
-                  {error}
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting ? 'Sending…' : 'Send reset link'}
-              </button>
-              <p className="text-center text-sm text-text-muted">
-                Remembered it?{' '}
-                <Link to="/login" className="font-medium text-primary underline underline-offset-4">
-                  Log In
-                </Link>
-              </p>
-            </form>
-          )}
+    <RecoveryLayout>
+      <h1 className="font-display text-2xl font-bold tracking-tight">Forgot password</h1>
+      {done ? (
+        <div className="mt-4 flex flex-col gap-3">
+          <p role="status">
+            If an eligible account uses that address, a reset link is on its way. Check your inbox
+            and Spam folder.
+          </p>
+          <p className="text-sm text-text-muted">
+            Delivery may be delayed. If this is a personnel invitation, ask an administrator to
+            regenerate the link or QR code.
+          </p>
         </div>
-      </main>
-      <LandingFooter />
-    </div>
+      ) : (
+        <form
+          className="mt-6"
+          onSubmit={(event) => void handleSubmit(submit)(event)}
+          noValidate
+          aria-busy={isSubmitting}
+        >
+          <fieldset disabled={isSubmitting}>
+            <FieldGroup>
+              <Field control={control} name="email" label="Email Address">
+                {(field) => (
+                  <Input
+                    id={field.id}
+                    type="email"
+                    autoComplete="email"
+                    maxLength={254}
+                    value={typeof field.value === 'string' ? field.value : ''}
+                    onChange={(event) => field.onChange(event.target.value)}
+                    onBlur={field.onBlur}
+                    aria-invalid={field.invalid}
+                    aria-describedby={field.describedBy}
+                  />
+                )}
+              </Field>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Sending…' : 'Send reset link'}
+              </Button>
+            </FieldGroup>
+          </fieldset>
+        </form>
+      )}
+      <p className="mt-6 text-sm text-text-muted">
+        Remembered it?{' '}
+        <Link to="/login" className="text-primary underline underline-offset-4">
+          Log In
+        </Link>
+      </p>
+    </RecoveryLayout>
   );
 }

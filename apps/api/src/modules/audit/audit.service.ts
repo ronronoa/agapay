@@ -12,6 +12,20 @@ export interface AuditWriteInput {
 
 type Tx = Prisma.TransactionClient | PrismaClient;
 
+// Internal projection for provenance; callers supply only their authorized entities.
+export function entityActions(
+  tx: Tx,
+  entityType: string,
+  ids: readonly string[],
+  actions: readonly string[],
+) {
+  return tx.auditLog.findMany({
+    where: { entityType, entityId: { in: [...ids] }, action: { in: [...actions] } },
+    select: { entityId: true, action: true, metadata: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+}
+
 export async function write(
   tx: Tx,
   actor: AuthContext | undefined,

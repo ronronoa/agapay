@@ -4,6 +4,7 @@ import {
   updateUserSchema,
   userListQuerySchema,
   userIdParamsSchema,
+  manualEmailVerificationSchema,
 } from '@agapay/shared';
 import { validationError } from '../../lib/errors.js';
 import { pathParam } from '../../lib/http/params.js';
@@ -17,7 +18,15 @@ usersRouter.use(requireAuth, requireRole('ADMIN'));
 usersRouter.post('/:id/verify-email', async (req, res) => {
   const parsed = userIdParamsSchema.safeParse(req.params);
   if (!parsed.success) throw validationError(parsed.error.flatten());
-  const user = await service.verifyDonorEmail(parsed.data.id, actorFrom(req), systemClock);
+  const body: unknown = req.body;
+  const input = manualEmailVerificationSchema.safeParse(body);
+  if (!input.success) throw validationError(input.error.flatten());
+  const user = await service.verifyDonorEmail(
+    parsed.data.id,
+    input.data,
+    actorFrom(req),
+    systemClock,
+  );
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({ data: user });
 });

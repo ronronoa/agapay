@@ -37,6 +37,10 @@ process.env.DIRECT_URL = testDbUrl;
 process.env.EMAIL_PROVIDER = 'console';
 // Live credentials in .env must never make tests write to the operations calendar.
 process.env.GOOGLE_CALENDAR_ENABLED = 'false';
+// Assistant tests supply a local model. Never inherit a live provider key.
+delete process.env.OPENROUTER_API_KEY;
+delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+delete process.env.GEMINI_MODEL;
 
 export default defineConfig({
   test: {

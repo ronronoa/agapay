@@ -9,6 +9,7 @@ import {
   accessTokenResponseSchema,
   errorEnvelopeSchema,
   campaignResponseSchema,
+  publicCampaignListResponseSchema,
 } from '@agapay/shared';
 import { prisma } from '../../src/lib/prisma.js';
 import { createApp } from '../../src/app.js';
@@ -89,6 +90,28 @@ describe('campaign cover image upload', () => {
 
   afterAll(() => {
     rmSync(UPLOAD_TMP, { recursive: true, force: true });
+  });
+
+  it('exposes existing covers through paginated public campaign search', async () => {
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: { status: 'ACTIVE', coverImageUrl: '/uploads/campaigns/public-fixture.png' },
+    });
+    try {
+      const res = await request(app)
+        .get(`/api/v1/public/campaigns?q=${encodeURIComponent(RUN)}&pageSize=1`)
+        .set('X-Forwarded-For', uniqueIp());
+      expect(res.status).toBe(200);
+      const result = parse(res, publicCampaignListResponseSchema).data;
+      expect(result.total).toBe(1);
+      expect(result.items[0]?.id).toBe(campaignId);
+      expect(result.items[0]?.coverImageUrl).toBe('/uploads/campaigns/public-fixture.png');
+    } finally {
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { status: 'DRAFT', coverImageUrl: null },
+      });
+    }
   });
 
   it('stores an admin PNG and serves it back', async () => {

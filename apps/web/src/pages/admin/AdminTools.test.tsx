@@ -51,6 +51,52 @@ beforeEach(() => {
 });
 
 describe('M5D admin tools', () => {
+  it('resends through the existing verification endpoint without marking the donor verified', async () => {
+    setUser({ ...user, role: 'ADMIN' });
+    vi.mocked(apiFetch).mockImplementation((_path, options) =>
+      options?.method === 'POST'
+        ? Promise.resolve(undefined)
+        : Promise.resolve({
+            data: { items: [{ ...user, role: 'DONOR' }], page: 1, pageSize: 25, total: 1 },
+          }),
+    );
+    show(<UsersPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Resend verification' }));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith('/api/v1/auth/resend-verification', {
+        method: 'POST',
+        body: { email: user.email },
+      }),
+    );
+    expect(screen.getByText('Unverified')).toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/verify-email'),
+      expect.anything(),
+    );
+  });
+
+  it('shows verification source and ownership method separately from delivery', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      data: {
+        items: [
+          {
+            ...user,
+            emailVerified: true,
+            verificationSource: 'ADMIN',
+            verificationMethod: 'PHONE_CALL',
+            emailVerifiedAt: '2026-10-26T01:00:00.000Z',
+          },
+        ],
+        page: 1,
+        pageSize: 25,
+        total: 1,
+      },
+    });
+    show(<UsersPage />);
+    expect(await screen.findByText(/Confirmed by administrator/)).toHaveTextContent('Phone call');
+    expect(screen.getByText('Verified')).toBeInTheDocument();
+  });
+
   it.each(['ADMIN', 'SUPER_ADMIN'] as const)(
     '%s confirms donor verification and refreshes its status',
     async (role) => {
@@ -72,6 +118,12 @@ describe('M5D admin tools', () => {
       expect(screen.getByRole('dialog', { name: 'Verify donor email?' })).toHaveTextContent(
         /another trusted channel/,
       );
+      expect(
+        within(screen.getByRole('dialog')).getByRole('button', { name: 'Verify email' }),
+      ).toBeDisabled();
+      fireEvent.change(screen.getByLabelText('How was ownership checked?'), {
+        target: { value: 'PHONE_CALL' },
+      });
       fireEvent.click(
         within(screen.getByRole('dialog', { name: 'Verify donor email?' })).getByRole('button', {
           name: 'Verify email',
@@ -80,6 +132,7 @@ describe('M5D admin tools', () => {
       await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Donor email verified.'));
       expect(apiFetch).toHaveBeenCalledWith(`/api/v1/users/${donor.id}/verify-email`, {
         method: 'POST',
+        body: { method: 'PHONE_CALL' },
       });
       await waitFor(() => expect(screen.getByText('Verified')).toBeInTheDocument());
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -100,6 +153,9 @@ describe('M5D admin tools', () => {
     });
     show(<UsersPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'Verify email' }));
+    fireEvent.change(screen.getByLabelText('How was ownership checked?'), {
+      target: { value: 'IN_PERSON' },
+    });
     fireEvent.click(
       within(screen.getByRole('dialog', { name: 'Verify donor email?' })).getByRole('button', {
         name: 'Verify email',

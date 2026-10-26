@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiClientError } from '../../lib/api-client';
 import { verifyAuthEmail } from '../../lib/auth-api';
-import { LandingHeader } from '../../components/landing/LandingHeader';
-import { LandingFooter } from '../../components/landing/LandingFooter';
+import { RecoveryLayout } from './RecoveryLayout';
+import { VerificationResend } from './VerificationResend';
 
 type VerifyState =
   { kind: 'pending' } | { kind: 'verified' } | { kind: 'invalid'; message: string };
@@ -35,45 +35,40 @@ export function VerifyEmailPage() {
   }, [params]);
 
   return (
-    <div className="min-h-screen bg-bg">
-      <LandingHeader />
-      <main className="mx-auto w-full max-w-xl px-4 py-10 sm:px-6">
-        <div className="rounded-xl border border-border bg-surface p-8 shadow-card">
-          <h1 className="font-display text-2xl font-bold tracking-tight">Confirm your email</h1>
-          {state.kind === 'pending' ? (
-            <p role="status" className="mt-2 text-sm text-text-muted">
-              Confirming…
-            </p>
-          ) : null}
-          {state.kind === 'verified' ? (
-            <div>
-              <p className="mt-2 font-medium">Email confirmed.</p>
-              <p className="mt-1 text-sm text-text-muted">
-                Your donor account is ready. Sign in to start donating.
-              </p>
-              <Link
-                to="/login"
-                className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark"
-              >
-                Go to sign in
-              </Link>
-            </div>
-          ) : null}
-          {state.kind === 'invalid' ? (
-            <div role="alert">
-              <p className="mt-2 font-medium">This link did not work.</p>
-              <p className="mt-1 text-sm text-text-muted">{state.message}</p>
-              <Link
-                to="/login"
-                className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt"
-              >
-                Back to sign in
-              </Link>
-            </div>
-          ) : null}
+    <RecoveryLayout>
+      <h1 className="font-display text-2xl font-bold tracking-tight">Confirm your email</h1>
+      {state.kind === 'pending' ? (
+        <p role="status" className="mt-2 text-sm text-text-muted">
+          Confirming…
+        </p>
+      ) : null}
+      {state.kind === 'verified' ? (
+        <div>
+          <p className="mt-2 font-medium">Email confirmed.</p>
+          <p className="mt-1 text-sm text-text-muted">
+            Your donor account is ready. Sign in to start donating.
+          </p>
+          <Link
+            to="/login"
+            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-surface hover:bg-primary-dark"
+          >
+            Go to sign in
+          </Link>
         </div>
-      </main>
-      <LandingFooter />
-    </div>
+      ) : null}
+      {state.kind === 'invalid' ? (
+        <div>
+          <p className="mt-2 font-medium">This link did not work.</p>
+          <p className="mt-1 text-sm text-text-muted">{state.message}</p>
+          <VerificationResend />
+          <Link
+            to="/login"
+            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md border border-border-strong px-4 py-2 text-sm font-medium hover:bg-surface-alt"
+          >
+            Back to sign in
+          </Link>
+        </div>
+      ) : null}
+    </RecoveryLayout>
   );
 }
