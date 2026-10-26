@@ -293,6 +293,19 @@ export async function login(
 
   const accessToken = await withRetry(() =>
     prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+      const current = await tx.user.findUnique({
+        where: { id: user.id },
+        select: { passwordHash: true, isActive: true, role: true, sessionVersion: true },
+      });
+      if (
+        !current?.isActive ||
+        current.passwordHash !== user.passwordHash ||
+        current.sessionVersion !== user.sessionVersion ||
+        current.role !== user.role
+      ) {
+        throw unauthenticated(GENERIC_LOGIN_FAILURE);
+      }
       await tx.refreshToken.create({
         data: {
           userId: user.id,
@@ -494,7 +507,14 @@ export async function changePassword(
 
   await withRetry(() =>
     prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+      // Serialize with refresh/login so neither can restore a session during a password change.
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(52501)`;
+      const changed = await tx.user.updateMany({
+        where: { id: userId, passwordHash: row.passwordHash, isActive: true },
+        data: { passwordHash, sessionVersion: { increment: 1 } },
+      });
+      if (changed.count !== 1)
+        throw conflict('Your account changed. Sign in again before retrying.');
       await tx.refreshToken.updateMany({
         where: { userId, revokedAt: null },
         data: { revokedAt: now },

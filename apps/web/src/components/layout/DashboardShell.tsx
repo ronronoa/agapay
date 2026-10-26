@@ -332,9 +332,15 @@ export function DashboardShell({ items, children }: DashboardShellProps) {
                           Dashboard
                         </Link>
                       </DropdownMenuItem>
-                      {user.role !== 'STAFF' && (
+                      <DropdownMenuItem asChild>
+                        <Link to={user.role === 'DONOR' ? '/donor/settings' : '/admin/profile'}>
+                          <Settings aria-hidden="true" />
+                          Profile settings
+                        </Link>
+                      </DropdownMenuItem>
+                      {personnel && user.role !== 'STAFF' && (
                         <DropdownMenuItem asChild>
-                          <Link to={user.role === 'DONOR' ? '/donor/settings' : '/admin/settings'}>
+                          <Link to="/admin/settings">
                             <Settings aria-hidden="true" />
                             Settings
                           </Link>

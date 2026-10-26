@@ -108,17 +108,17 @@ describe('AdminMessagesPage', () => {
 });
 
 describe('DonorSettingsPage', () => {
-  it('renders profile fields with photo and birthday honestly parked', () => {
+  it('renders working profile and password forms', () => {
     renderWith(<DonorSettingsPage />);
     expect(screen.getByLabelText('Full Name')).toBeInTheDocument();
-    expect(screen.getByText('Coming soon')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Edit Photo/ })).toBeDisabled();
+    expect(screen.getByLabelText('Current password')).toBeInTheDocument();
+    expect(screen.getByLabelText('Confirm new password')).toBeInTheDocument();
   });
 
   it('requires a name before saving', async () => {
     renderWith(<DonorSettingsPage />);
     fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Profile' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));
     await waitFor(() =>
       expect(screen.getByText(/String must contain at least 2 character\(s\)/)).toBeInTheDocument(),
     );

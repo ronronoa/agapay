@@ -9,6 +9,7 @@ import { AuditLogPage } from '../pages/admin/AuditLogPage';
 import { ItemTypesPage } from '../pages/admin/ItemTypesPage';
 import { UsersPage } from '../pages/admin/UsersPage';
 import { SettingsPage } from '../pages/admin/SettingsPage';
+import { AccountSettingsPage } from '../pages/AccountSettingsPage';
 import { ReportsPage } from '../pages/admin/ReportsPage';
 import { EmailOperationsPage } from '../pages/admin/EmailOperationsPage';
 import { ForbiddenPage } from '../pages/ForbiddenPage';
@@ -189,6 +190,11 @@ const router = createBrowserRouter([
       { path: 'calendar', element: <CalendarPage /> },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'emails', element: <EmailOperationsPage /> },
+      {
+        path: 'profile',
+        element: <AccountSettingsPage />,
+        handle: { shellTitle: 'Profile settings' },
+      },
       {
         path: 'settings',
         element: (

@@ -243,12 +243,16 @@ describe('Shell account and navigation controls', () => {
         'href',
         role === 'DONOR' ? '/donor' : '/admin',
       );
-      if (role === 'STAFF')
+      expect(within(menu).getByRole('menuitem', { name: 'Profile settings' })).toHaveAttribute(
+        'href',
+        role === 'DONOR' ? '/donor/settings' : '/admin/profile',
+      );
+      if (role === 'STAFF' || role === 'DONOR')
         expect(within(menu).queryByRole('menuitem', { name: 'Settings' })).toBeNull();
       else
         expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveAttribute(
           'href',
-          role === 'DONOR' ? '/donor/settings' : '/admin/settings',
+          '/admin/settings',
         );
       fireEvent.click(within(menu).getByRole('menuitem', { name: 'Log out' }));
       expect(await screen.findByText('Log out?')).toBeInTheDocument();
