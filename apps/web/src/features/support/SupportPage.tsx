@@ -71,6 +71,15 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
   const [filter, setFilter] = useState('');
   const [unread, setUnread] = useState(false);
   const [page, setPage] = useState(1);
+  useEffect(() => {
+    const term = q.trim();
+    if (term === search) return;
+    const timer = window.setTimeout(() => {
+      setSearch(term);
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [q, search]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
@@ -94,10 +103,11 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
   const list = useQuery({
     queryKey: ['support', 'list', search, filter, unread, page],
     enabled: personnel,
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       supportListResponseSchema.parse(
         await apiFetch('/api/v1/support/conversations/search', {
           method: 'POST',
+          signal,
           body: {
             q: search,
             ...(filter ? { status: filter } : {}),
@@ -288,37 +298,31 @@ export function SupportPage({ personnel }: { personnel: boolean }) {
               selected ? 'hidden' : 'flex',
             )}
           >
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                setSearch(q.trim());
-                setPage(1);
-              }}
-              className="flex flex-wrap gap-2"
-            >
-              <label className="w-full text-sm">
+            <div role="search" className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted"
+              />
+              <label className="block text-sm">
                 <Input
                   aria-label="Search donors"
                   value={q}
                   maxLength={100}
                   onChange={(event) => setQ(event.target.value)}
                   placeholder="Search donors"
+                  className="pl-9 pr-10"
                 />
               </label>
-              <Button
-                type="submit"
-                variant="accent"
-                disabled={list.isFetching}
-                aria-busy={list.isFetching}
-              >
-                {list.isFetching ? (
-                  <Spinner aria-hidden="true" data-icon="inline-start" />
-                ) : (
-                  <Search aria-hidden="true" data-icon="inline-start" />
-                )}
-                Search
-              </Button>
-            </form>
+              {list.isFetching && (
+                <span
+                  role="status"
+                  aria-label="Searching conversations"
+                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                >
+                  <Spinner aria-hidden="true" />
+                </span>
+              )}
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <label className="text-sm">
                 Status

@@ -26,7 +26,7 @@ function formatDate(iso: string): string {
   });
 }
 
-export function PublicCampaignsPage() {
+export function PublicCampaignsPage({ audience = 'public' }: { audience?: 'public' | 'donor' }) {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const params = new URLSearchParams({ page: String(page), pageSize: '12' });
@@ -40,8 +40,12 @@ export function PublicCampaignsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Relief campaigns"
-        description="Explore active relief drives, covered communities, and priority goods."
+        title={audience === 'donor' ? 'Campaigns' : 'Relief campaigns'}
+        description={
+          audience === 'donor'
+            ? 'Explore active relief drives and the goods you can donate.'
+            : 'Explore active relief drives, covered communities, and priority goods.'
+        }
       />
 
       <div className="flex flex-col gap-2 sm:max-w-md">
@@ -119,9 +123,9 @@ export function PublicCampaignsPage() {
                   </Link>
                   <Link
                     className={buttonVariants()}
-                    to={`/request-assistance?campaign=${campaign.id}`}
+                    to={`/${audience === 'donor' ? 'donate' : 'request-assistance'}?campaign=${campaign.id}`}
                   >
-                    Request assistance
+                    {audience === 'donor' ? 'Donate goods' : 'Request assistance'}
                   </Link>
                   <dl className="grid grid-cols-2 gap-3 text-xs">
                     <div>

@@ -27,6 +27,14 @@ export type CreateCalendarEventInput = z.infer<typeof createCalendarEventSchema>
 export const updateCalendarEventSchema = z
   .object({
     revision: z.number().int().positive(),
+    campaignId: z.string().uuid().optional(),
+    type: z
+      .enum([
+        CalendarEventType.DONATION_DRIVE,
+        CalendarEventType.COLLECTION,
+        CalendarEventType.DISTRIBUTION,
+      ])
+      .optional(),
     title: z.string().trim().min(3).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     startAt: z.coerce.date().optional(),

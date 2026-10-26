@@ -7,7 +7,6 @@ import './styles/index.css';
 import { Toaster } from './components/ui/sonner';
 import { ChatWidget } from './features/chat/ChatWidget';
 
-// One factory so a cache key is never typed twice (rules.md §6).
 export const queryKeys = {
   health: () => ['health'] as const,
   campaigns: () => ['campaigns'] as const,

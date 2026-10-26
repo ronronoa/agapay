@@ -18,6 +18,7 @@ import { LandingFooter } from '../../components/landing/LandingFooter';
 import { TurnstileWidget, TURNSTILE_SITE_KEY } from '../../components/TurnstileWidget';
 import { Field } from '../../components/ui/field';
 import { Input } from '../../components/ui/input';
+import { GoodsPicker } from '../../components/ui/GoodsPicker';
 
 const inputClass = 'w-full rounded-md border border-input bg-surface px-3 py-2 text-sm';
 
@@ -36,30 +37,6 @@ interface Pick {
   checked: boolean;
   quantity: number;
   customName: string;
-}
-
-const CATEGORY_ORDER = [
-  'FOOD',
-  'WATER',
-  'CLOTHING',
-  'HYGIENE',
-  'BEDDING',
-  'SCHOOL',
-  'OTHER',
-] as const;
-
-const CATEGORY_LABELS: Record<string, string> = {
-  FOOD: 'Food',
-  WATER: 'Water',
-  CLOTHING: 'Clothing',
-  HYGIENE: 'Hygiene',
-  BEDDING: 'Bedding',
-  SCHOOL: 'School',
-  OTHER: 'Other',
-};
-
-function categoryLabel(category: string): string {
-  return CATEGORY_LABELS[category] ?? category;
 }
 
 function capHint(item: PublicItemTypeDto, household: number | undefined): string | null {
@@ -89,7 +66,6 @@ export function RequestAssistancePage() {
   const [copied, setCopied] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
-  const [goodsFilter, setGoodsFilter] = useState('');
   const [summaryFields, setSummaryFields] = useState<string[]>([]);
   const [outsideArea, setOutsideArea] = useState(false);
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -133,11 +109,6 @@ export function RequestAssistancePage() {
 
   const campaigns = campaignsQuery.data?.data.items ?? [];
   const catalog = itemsQuery.data?.data.items ?? [];
-  const filterQuery = goodsFilter.trim().toLowerCase();
-  const visibleCatalog =
-    filterQuery.length === 0
-      ? catalog
-      : catalog.filter((item) => item.name.toLowerCase().includes(filterQuery));
   const householdRaw = watch('householdSize');
   const household = typeof householdRaw === 'number' ? householdRaw : undefined;
   const watchedCampaignId = watch('campaignId');
@@ -732,7 +703,7 @@ export function RequestAssistancePage() {
                       )}
                     </Field>
 
-                    <fieldset className="mt-4">
+                    <fieldset className="mt-4" disabled={isSubmitting}>
                       <legend className="text-sm font-medium">Goods needed *</legend>
                       {itemsQuery.isPending ? (
                         <p role="status" className="mt-1 text-sm text-text-muted">
@@ -747,124 +718,82 @@ export function RequestAssistancePage() {
                           </button>
                         </p>
                       ) : null}
-                      <div className="mt-2">
-                        <label htmlFor="goods-filter" className="block text-sm font-medium">
-                          Find a good
-                        </label>
-                        <Input
-                          id="goods-filter"
-                          type="search"
-                          placeholder="Filter by name…"
-                          value={goodsFilter}
-                          onChange={(event) => setGoodsFilter(event.target.value)}
-                          className="mt-1"
-                        />
-                      </div>
-                      {visibleCatalog.length === 0 && !itemsQuery.isPending ? (
-                        <p role="status" className="mt-2 text-sm text-text-muted">
-                          {catalog.length === 0
-                            ? 'No goods are available to request right now. Please check back later.'
-                            : 'No goods match that filter.'}
-                        </p>
-                      ) : null}
-                      <div className="mt-2 space-y-2">
-                        {CATEGORY_ORDER.filter((category) =>
-                          visibleCatalog.some((item) => item.category === category),
-                        ).map((category) => {
-                          const group = visibleCatalog.filter((item) => item.category === category);
-                          const selected = group.filter(
-                            (item) => picks[item.id]?.checked === true,
-                          ).length;
-                          return (
-                            <details
-                              key={category}
-                              className="rounded-md border border-border px-3 py-2"
-                            >
-                              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
-                                {categoryLabel(category)}{' '}
-                                <span className="font-normal text-text-muted">
-                                  {selected > 0
-                                    ? `${selected} selected`
-                                    : `${group.length} ${group.length === 1 ? 'good' : 'goods'}`}
-                                </span>
-                              </summary>
-                              <ul className="mt-2 space-y-2">
-                                {group.map((item) => {
-                                  const pick = picks[item.id] ?? {
-                                    checked: false,
-                                    quantity: 1,
-                                    customName: '',
-                                  };
-                                  const hint = capHint(item, household);
-                                  return (
-                                    <li
-                                      key={item.id}
-                                      className="border-t border-border px-1 py-2 first:border-t-0"
+                      {!itemsQuery.isPending && itemsQuery.error === null && (
+                        <GoodsPicker
+                          items={catalog}
+                          isSelected={(id) => picks[id]?.checked === true}
+                          disabled={isSubmitting}
+                        >
+                          {(item) => {
+                            const pick = picks[item.id] ?? {
+                              checked: false,
+                              quantity: 1,
+                              customName: '',
+                            };
+                            const hint = capHint(item, household);
+                            return (
+                              <li key={item.id} className="min-w-0 px-1 py-3">
+                                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={pick.checked}
+                                    onChange={() => toggleItem(item.id)}
+                                    className="h-4 w-4 accent-primary-subtle"
+                                  />
+                                  <span className="font-medium">
+                                    {item.name}{' '}
+                                    <span className="font-normal text-text-muted">
+                                      ({item.unit})
+                                    </span>
+                                  </span>
+                                </label>
+                                {hint === null ? null : (
+                                  <p className="mt-1 text-xs text-text-muted">{hint}</p>
+                                )}
+                                {pick.checked ? (
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <label
+                                      htmlFor={`qty-${item.id}`}
+                                      className="text-xs text-text-muted"
                                     >
-                                      <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
-                                        <input
-                                          type="checkbox"
-                                          checked={pick.checked}
-                                          onChange={() => toggleItem(item.id)}
-                                          className="h-4 w-4 accent-primary-subtle"
-                                        />
-                                        <span className="font-medium">
-                                          {item.name}{' '}
-                                          <span className="font-normal text-text-muted">
-                                            ({item.unit})
-                                          </span>
-                                        </span>
-                                      </label>
-                                      {hint === null ? null : (
-                                        <p className="mt-1 text-xs text-text-muted">{hint}</p>
-                                      )}
-                                      {pick.checked ? (
-                                        <div className="mt-2 flex items-center gap-2">
-                                          <label
-                                            htmlFor={`qty-${item.id}`}
-                                            className="text-xs text-text-muted"
-                                          >
-                                            Qty
-                                          </label>
-                                          <input
-                                            id={`qty-${item.id}`}
-                                            type="number"
-                                            min={1}
-                                            value={pick.quantity}
-                                            onChange={(event) =>
-                                              setQuantity(item.id, Number(event.target.value))
-                                            }
-                                            className="w-20 rounded-md border border-input bg-surface px-2 py-1 text-sm"
-                                          />
-                                          {item.name === 'Other' ? (
-                                            <input
-                                              type="text"
-                                              aria-label="Describe the item"
-                                              placeholder="Describe the item"
-                                              value={pick.customName}
-                                              onChange={(event) =>
-                                                setPicks((prev) => ({
-                                                  ...prev,
-                                                  [item.id]: {
-                                                    checked: true,
-                                                    quantity: pick.quantity,
-                                                    customName: event.target.value,
-                                                  },
-                                                }))
-                                              }
-                                              className="flex-1 rounded-md border border-input bg-surface px-2 py-1 text-sm"
-                                            />
-                                          ) : null}
-                                        </div>
-                                      ) : null}
-                                    </li>
-                                  );
-                                })}
-                              </ul>
-                            </details>
-                          );
-                        })}
-                      </div>
+                                      Qty
+                                    </label>
+                                    <input
+                                      id={`qty-${item.id}`}
+                                      type="number"
+                                      min={1}
+                                      value={pick.quantity}
+                                      onChange={(event) =>
+                                        setQuantity(item.id, Number(event.target.value))
+                                      }
+                                      className="min-h-11 w-20 rounded-md border border-input bg-surface px-2 py-1 text-sm"
+                                    />
+                                    {item.name === 'Other' ? (
+                                      <input
+                                        type="text"
+                                        aria-label="Describe the item"
+                                        placeholder="Describe the item"
+                                        value={pick.customName}
+                                        onChange={(event) =>
+                                          setPicks((prev) => ({
+                                            ...prev,
+                                            [item.id]: {
+                                              checked: true,
+                                              quantity: pick.quantity,
+                                              customName: event.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className="min-h-11 min-w-0 flex-1 rounded-md border border-input bg-surface px-2 py-1 text-sm"
+                                      />
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </li>
+                            );
+                          }}
+                        </GoodsPicker>
+                      )}
                       <FieldError message={errors.items?.message} />
                     </fieldset>
 

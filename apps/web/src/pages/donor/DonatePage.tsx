@@ -86,6 +86,7 @@ export function DonatePage() {
                       : '',
                   preferredDate: '',
                   preferredNote: '',
+                  pickupAddress: '',
                   notes: '',
                   items:
                     suggestion &&

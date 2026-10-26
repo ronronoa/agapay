@@ -108,16 +108,44 @@ export async function update(
   clock: Clock = systemClock,
 ): Promise<CalendarEventDto> {
   await prisma.$transaction(async (tx) => {
+    const before = await tx.calendarEvent.findUnique({
+      where: { id },
+      select: { campaignId: true },
+    });
+    if (!before) throw notFound('Calendar event');
+    for (const campaignId of [
+      ...new Set([before.campaignId, input.campaignId ?? before.campaignId]),
+    ].sort()) {
+      const campaign = await lockCampaign(tx, campaignId);
+      if (
+        campaignId === input.campaignId &&
+        campaignId !== before.campaignId &&
+        !['ACTIVE', 'DRAFT'].includes(campaign.status)
+      )
+        throw businessRuleViolation('Choose an active or draft campaign.');
+    }
     await lockEvents(tx, [id]);
     const old = await tx.calendarEvent.findUnique({ where: { id } });
     if (!old) throw notFound('Calendar event');
     if (old.revision !== input.revision)
       throw conflict('This event changed. Refresh and review its assignments.');
     if (old.status !== 'SCHEDULED') throw conflict('Only scheduled events can be edited.');
+    const type = input.type ?? old.type;
+    const campaignId = input.campaignId ?? old.campaignId;
+    if (type !== old.type || campaignId !== old.campaignId) {
+      const [donations, distributions] = await Promise.all([
+        tx.donation.count({ where: { collectionEventId: id } }),
+        tx.distribution.count({ where: { calendarEventId: id } }),
+      ]);
+      if (donations || distributions)
+        throw conflict(
+          'Move or remove linked records before changing event type or campaign. Historical records must remain linked to their original event.',
+        );
+    }
     if ((input.endAt ?? old.endAt) <= (input.startAt ?? old.startAt))
       throw businessRuleViolation('End time must be after start time.');
     if (input.capacity != null) {
-      if (old.type !== 'DISTRIBUTION')
+      if (type !== 'DISTRIBUTION')
         throw businessRuleViolation('Only distribution events have capacity.');
       const count = await tx.distribution.count({
         where: { calendarEventId: id, status: { in: ['SCHEDULED', 'DISTRIBUTED'] } },
@@ -125,22 +153,32 @@ export async function update(
       if (input.capacity < count) throw conflict('Capacity cannot be lower than occupied slots.');
     }
     const { revision } = input;
-    await tx.calendarEvent.update({
-      where: { id },
+    const updated = await tx.calendarEvent.updateMany({
+      where: { id, revision, status: 'SCHEDULED' },
       data: {
+        type,
+        campaignId,
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.startAt === undefined ? {} : { startAt: input.startAt }),
         ...(input.endAt === undefined ? {} : { endAt: input.endAt }),
         ...(input.location === undefined ? {} : { location: input.location }),
-        ...(input.capacity === undefined ? {} : { capacity: input.capacity }),
+        capacity:
+          type === 'DISTRIBUTION'
+            ? input.capacity === undefined
+              ? old.capacity
+              : input.capacity
+            : null,
         revision: revision + 1,
         syncStatus: 'NOT_SYNCED',
         syncAttempts: 0,
         syncNextAt: clock.now(),
       },
     });
+    if (!updated.count) throw conflict('This event changed. Refresh and review its assignments.');
     const changed =
+      (input.title !== undefined && input.title !== old.title) ||
+      (input.description !== undefined && (input.description ?? '') !== (old.description ?? '')) ||
       (input.startAt !== undefined && +input.startAt !== +old.startAt) ||
       (input.endAt !== undefined && +input.endAt !== +old.endAt) ||
       (input.location !== undefined && input.location !== old.location);
@@ -170,7 +208,11 @@ export async function update(
       action: 'calendar.update',
       entityType: 'CalendarEvent',
       entityId: id,
-      metadata: { revision: revision + 1 },
+      metadata: {
+        revision: revision + 1,
+        typeChanged: type !== old.type,
+        campaignChanged: campaignId !== old.campaignId,
+      },
     });
   }, txOptions);
   return detail(id);

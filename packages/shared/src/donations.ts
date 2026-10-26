@@ -24,6 +24,7 @@ export const submitDonationSchema = z
     campaignId: z.string().uuid().optional(),
     preferredDate: z.coerce.date().optional(),
     preferredNote: z.string().trim().max(500).optional(),
+    pickupAddress: z.string().trim().max(500).optional(),
     notes: z.string().trim().max(2000).optional(),
     items: z.array(donationItemInputSchema).min(1).max(100),
   })
@@ -35,6 +36,7 @@ export const updateDonationSchema = z
   .object({
     preferredDate: z.coerce.date().nullable().optional(),
     preferredNote: z.string().trim().max(500).nullable().optional(),
+    pickupAddress: z.string().trim().max(500).nullable().optional(),
     notes: z.string().trim().max(2000).nullable().optional(),
     items: z.array(donationItemInputSchema).min(1).max(100).optional(),
   })
@@ -125,6 +127,7 @@ export const donationDtoSchema = z.object({
   donorEmail: z.string(),
   preferredDate: z.string().nullable(),
   preferredNote: z.string().nullable(),
+  pickupAddress: z.string().nullable().optional(),
   notes: z.string().nullable(),
   rejectionReason: z.string().nullable(),
   items: z.array(donationItemDtoSchema),

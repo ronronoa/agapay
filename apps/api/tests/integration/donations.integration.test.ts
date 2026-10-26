@@ -170,6 +170,38 @@ describe('M2 donations and inventory', () => {
     expect(lateEdit.status).toBe(409);
   });
 
+  it('stores private pickup addresses, supports clearing, and rejects unauthorized changes', async () => {
+    const address = '24 Test Street, Sample Barangay, Test City';
+    const createdResponse = await post('/api/v1/donations', donor.token, {
+      campaignId,
+      pickupAddress: `  ${address}  `,
+      items: [{ itemTypeId: foodTypeId, quantityDeclared: 2 }],
+    });
+    expect(createdResponse.status).toBe(201);
+    const created = parse(createdResponse, donationResponseSchema).data;
+    expect(created.pickupAddress).toBe(address);
+    expect((await staffDetail(created.id)).pickupAddress).toBe(address);
+    expect((await get(`/api/v1/donations/${created.id}`, unverified.token)).status).toBe(404);
+    const patch = (token: string, pickupAddress: string | null) =>
+      request(app)
+        .patch(`/api/v1/donations/${created.id}`)
+        .set('X-Forwarded-For', uniqueIp())
+        .set('Authorization', `Bearer ${token}`)
+        .send({ pickupAddress });
+    expect((await patch(unverified.token, 'Other address')).status).toBe(404);
+    expect((await patch(donor.token, 'x'.repeat(501))).status).toBe(400);
+    const updated = await patch(donor.token, 'Updated test pickup address');
+    expect(updated.status).toBe(200);
+    expect(parse(updated, donationResponseSchema).data.pickupAddress).toBe(
+      'Updated test pickup address',
+    );
+    const cleared = await patch(donor.token, '');
+    expect(parse(cleared, donationResponseSchema).data.pickupAddress).toBeNull();
+    const audit = await prisma.auditLog.findMany({ where: { entityId: created.id } });
+    expect(JSON.stringify(audit.map((row) => row.metadata))).not.toContain('Test Street');
+    expect(JSON.stringify(audit.map((row) => row.metadata))).not.toContain('Updated test pickup');
+  });
+
   it('verifies and rejects with queued emails', async () => {
     const good = await submitDonation(donor.token);
     const verified = await post(`/api/v1/donations/${good.id}/verify`, staff.token, {});
@@ -187,6 +219,29 @@ describe('M2 donations and inventory', () => {
       where: { type: 'DONATION_REJECTED', relatedDonationId: bad.id },
     });
     expect(queued).toBe(1);
+  });
+
+  it('serializes pending address/item edits against verification', async () => {
+    const created = await submitDonation(donor.token);
+    const [edited, verified] = await Promise.all([
+      request(app)
+        .patch(`/api/v1/donations/${created.id}`)
+        .set('X-Forwarded-For', uniqueIp())
+        .set('Authorization', `Bearer ${donor.token}`)
+        .send({
+          pickupAddress: 'Race test pickup',
+          items: [{ itemTypeId: foodTypeId, quantityDeclared: 17 }],
+        }),
+      post(`/api/v1/donations/${created.id}/verify`, staff.token, {}),
+    ]);
+    expect(verified.status).toBe(200);
+    expect([200, 409]).toContain(edited.status);
+    const current = await staffDetail(created.id);
+    expect(current.status).toBe('VERIFIED');
+    expect(current.items.find((item) => item.itemTypeId === foodTypeId)?.quantityDeclared).toBe(
+      edited.status === 200 ? 17 : 40,
+    );
+    expect(current.pickupAddress).toBe(edited.status === 200 ? 'Race test pickup' : null);
   });
 
   it('collects received quantities into inventory, never declared', async () => {

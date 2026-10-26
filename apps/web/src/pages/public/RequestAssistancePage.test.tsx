@@ -339,25 +339,30 @@ describe('RequestAssistancePage', () => {
     expect(ids).toEqual([foodItem.id, waterItem.id].sort());
   });
 
-  it('starts every goods group collapsed and narrows them with the filter', async () => {
-    const { container } = renderPage();
+  it('filters goods without losing selections or quantities', async () => {
+    renderPage();
     await fillStepOne();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to assistance needs →' }));
     await waitFor(() => expect(screen.getByLabelText('Relief campaign *')).toBeInTheDocument());
-    const groups = [...container.querySelectorAll('details')];
-    expect(groups.length).toBeGreaterThan(0);
-    expect(groups.every((group) => !group.open)).toBe(true);
-
+    fireEvent.click(screen.getByRole('checkbox', { name: /Food Pack/ }));
+    fireEvent.change(screen.getByLabelText('Qty'), { target: { value: '2' } });
     const filter = screen.getByLabelText('Find a good');
     fireEvent.change(filter, { target: { value: 'water' } });
-    const summaries = [...container.querySelectorAll('summary')].map(
-      (node) => node.textContent ?? '',
-    );
-    expect(summaries.some((text) => text.includes('Water'))).toBe(true);
-    expect(summaries.some((text) => text.includes('Food'))).toBe(false);
+    expect(screen.getByRole('checkbox', { name: /Drinking Water/ })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Food Pack/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
 
     fireEvent.change(filter, { target: { value: 'no such good' } });
-    expect(screen.getByText('No goods match that filter.')).toBeInTheDocument();
+    expect(screen.getByText(/No goods match these filters/)).toBeInTheDocument();
+    fireEvent.change(filter, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Selected only' }));
+    expect(screen.getByRole('checkbox', { name: /Food Pack/ })).toBeChecked();
+    expect(screen.getByLabelText('Qty')).toHaveValue(2);
+    expect(screen.queryByRole('checkbox', { name: /Drinking Water/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Selected only' }));
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'WATER' } });
+    expect(screen.getByRole('checkbox', { name: /Drinking Water/ })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Food Pack/ })).not.toBeInTheDocument();
   });
 });
 

@@ -6,6 +6,7 @@ import type * as ApiClientModule from '../../lib/api-client';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { DonatePage } from './DonatePage';
 import { apiFetch, ApiClientError } from '../../lib/api-client';
+import { submitDonationSchema } from '@agapay/shared';
 
 vi.mock('../../lib/api-client', async () => {
   const actual = await vi.importActual<typeof ApiClientModule>('../../lib/api-client');
@@ -98,6 +99,22 @@ function renderPage(entry = '/donate'): ReturnType<typeof render> {
 }
 
 describe('DonatePage', () => {
+  it('keeps donation details when goods are hidden by a search', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Food Pack/ }));
+    fireEvent.change(screen.getByLabelText('Qty'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('Description for Food Pack'), {
+      target: { value: 'Sealed packs' },
+    });
+    fireEvent.change(screen.getByLabelText('Find a good'), { target: { value: 'water' } });
+    expect(screen.queryByRole('checkbox', { name: /Food Pack/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Find a good'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Selected only' }));
+    expect(screen.getByRole('checkbox', { name: /Food Pack/ })).toBeChecked();
+    expect(screen.getByLabelText('Qty')).toHaveValue(5);
+    expect(screen.getByLabelText('Description for Food Pack')).toHaveValue('Sealed packs');
+  });
   it('applies reviewed campaign and goods suggestions without submitting a pledge', async () => {
     const fields = { campaignId: campaign.id, items: [{ itemTypeId: foodItem.id, quantity: 2 }] };
     renderPage(
@@ -121,6 +138,9 @@ describe('DonatePage', () => {
       target: { value: '11111111-1111-4111-8111-111111111111' },
     });
     fireEvent.click(screen.getByRole('checkbox', { name: /Food Pack/ }));
+    fireEvent.change(screen.getByLabelText('Pickup address'), {
+      target: { value: '24 Test Street, Test City' },
+    });
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       if (path === '/api/v1/donations') {
         return Promise.resolve({ data: donation });
@@ -135,6 +155,14 @@ describe('DonatePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit donation' }));
 
     await waitFor(() => expect(screen.getByText('DON-2026-000201')).toBeInTheDocument());
+    const sent = vi
+      .mocked(apiFetch)
+      .mock.calls.find(
+        ([path, options]) => path === '/api/v1/donations' && options?.method === 'POST',
+      );
+    expect(submitDonationSchema.parse(sent?.[1]?.body).pickupAddress).toBe(
+      '24 Test Street, Test City',
+    );
   });
 
   it('offers a resend action when the email is unverified', async () => {

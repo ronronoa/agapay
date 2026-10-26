@@ -144,6 +144,7 @@ beforeAll(async () => {
         donorId: id,
         campaignId,
         notes: 'INJECT_PRIVATE_NOTES',
+        pickupAddress: 'PRIVATE_PICKUP_ADDRESS',
         items: {
           create: {
             itemTypeId: goodsId,
@@ -230,7 +231,7 @@ describe('M6 assistant boundaries', () => {
     expect(serialized).toContain('"quantityDeclared":2');
     expect(serialized).not.toContain('"quantityDeclared":99');
     expect(serialized).not.toMatch(
-      /PRIVATE_ITEM_NOTE|INJECT_PRIVATE_NOTES|Private chat fixture|@example/,
+      /PRIVATE_PICKUP_ADDRESS|pickupAddress|PRIVATE_ITEM_NOTE|INJECT_PRIVATE_NOTES|Private chat fixture|@example/,
     );
   });
 

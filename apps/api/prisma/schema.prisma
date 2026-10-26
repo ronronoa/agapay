@@ -276,6 +276,7 @@ model Donation {
   status            DonationStatus @default(PENDING)
   preferredDate     DateTime?      @db.Timestamptz(3)
   preferredNote     String?
+  pickupAddress     String?
   collectionEventId String?
   scheduleRevision Int @default(1)
   scheduleNotifiedAt DateTime? @db.Timestamptz(3)

@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -73,10 +73,58 @@ beforeEach(() => {
   vi.mocked(apiFetch).mockImplementation((path) => Promise.resolve(result(path)));
 });
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   clearSession();
 });
 describe('SupportPage', () => {
+  it('debounces rapid donor search, resets pagination and refreshes on clearing', async () => {
+    vi.mocked(apiFetch).mockImplementation((path) =>
+      Promise.resolve(
+        path.endsWith('/search')
+          ? { data: [conversation], meta: { page: 1, pageSize: 20, total: 41 } }
+          : result(path),
+      ),
+    );
+    show(true);
+    await screen.findByRole('button', { name: /Fixture Donor/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/api/v1/support/conversations/search',
+        expect.objectContaining({ body: { q: '', unread: 'false', page: 2, pageSize: 20 } }),
+      ),
+    );
+    vi.mocked(apiFetch).mockClear();
+    vi.useFakeTimers();
+    fireEvent.change(screen.getByLabelText('Search donors'), { target: { value: 'Fir' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(apiFetch).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Search donors'), { target: { value: 'Final donor' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(apiFetch).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/api/v1/support/conversations/search',
+      expect.objectContaining({
+        body: { q: 'Final donor', unread: 'false', page: 1, pageSize: 20 },
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('Search donors'), { target: { value: '' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/api/v1/support/conversations/search',
+      expect.objectContaining({ body: { q: '', unread: 'false', page: 1, pageSize: 20 } }),
+    );
+  });
   it.each([false, true])(
     'sends with Enter for personnel=%s using an icon-only named button',
     async (personnel) => {
@@ -245,12 +293,15 @@ describe('SupportPage', () => {
     fireEvent.change(screen.getByLabelText('Search donors'), {
       target: { value: 'Private donor name' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith('/api/v1/support/conversations/search', {
-        method: 'POST',
-        body: { q: 'Private donor name', unread: 'false', page: 1, pageSize: 20 },
-      }),
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/api/v1/support/conversations/search',
+        expect.objectContaining({
+          method: 'POST',
+          body: { q: 'Private donor name', unread: 'false', page: 1, pageSize: 20 },
+        }),
+      ),
     );
     expect(vi.mocked(apiFetch).mock.calls.some(([path]) => path.includes('Private donor'))).toBe(
       false,

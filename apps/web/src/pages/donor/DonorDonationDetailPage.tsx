@@ -41,9 +41,10 @@ export function DonorDonationDetailPage() {
   );
 
   function onEdit(input: SubmitDonationInput): Promise<void> {
+    const { campaignId: _campaignId, ...changes } = input;
     return apiFetch(`/api/v1/donations/${encodeURIComponent(id ?? '')}`, {
       method: 'PATCH',
-      body: input,
+      body: changes,
     })
       .then(() => {
         setEditing(false);
@@ -109,11 +110,13 @@ export function DonorDonationDetailPage() {
               <div className="rounded-lg border border-border bg-surface p-5 shadow-card">
                 <h2 className="font-display text-base font-semibold">Edit donation</h2>
                 <DonateForm
+                  campaignLocked
                   campaigns={campaignsQuery.data?.data.items ?? []}
                   defaults={{
                     campaignId: donation.campaignId,
                     preferredDate: donation.preferredDate?.slice(0, 10) ?? '',
                     preferredNote: donation.preferredNote ?? '',
+                    pickupAddress: donation.pickupAddress ?? '',
                     notes: donation.notes ?? '',
                     items: donation.items.map((item) => ({
                       itemTypeId: item.itemTypeId,
@@ -175,6 +178,24 @@ export function DonorDonationDetailPage() {
                   </li>
                 ))}
               </ul>
+            </section>
+
+            <section
+              aria-label="Collection details"
+              className="rounded-lg border border-border bg-surface p-5"
+            >
+              <h2 className="font-display text-base font-semibold">Collection details</h2>
+              <dl className="mt-2 flex flex-col gap-2 text-sm">
+                <dt className="text-text-muted">Pickup address</dt>
+                <dd className="whitespace-pre-wrap break-words">
+                  {donation.pickupAddress || 'Not provided'}
+                </dd>
+                <dt className="text-text-muted">Preferred date</dt>
+                <dd>{formatDate(donation.preferredDate)}</dd>
+              </dl>
+              <p className="mt-3 text-xs text-text-muted">
+                Staff will confirm collection arrangements after verification.
+              </p>
             </section>
 
             <section
